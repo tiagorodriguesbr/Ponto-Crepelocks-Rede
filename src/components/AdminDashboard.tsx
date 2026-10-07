@@ -10,7 +10,8 @@ import {
   AlertCircle,
   ArrowUpRight,
   ShieldAlert,
-  ArrowRight
+  ArrowRight,
+  Eye
 } from 'lucide-react';
 import { UserAccount, PunchRecord, Store, SystemNotification } from '../types';
 
@@ -47,8 +48,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     (p) => p.date === todayStr && employeeIds.has(p.employeeId)
   );
 
-  // Operational metrics
-  const totalEmployees = filteredUsers.filter((u) => u.active && u.role === 'atendente').length;
+  // Operational metrics: only employees who are required to punch clock
+  const usersWhoPunch = filteredUsers.filter(
+    (u) => u.active && u.role !== 'dono' && !u.exemptFromPunchClock
+  );
+  const totalEmployees = usersWhoPunch.length;
   const currentlyWorking = todayPunches.filter((p) => p.entry !== null && p.exit === null).length;
   const completedToday = todayPunches.filter((p) => p.exit !== null).length;
   const delayedToday = todayPunches.filter((p) => p.status === 'atraso' || (p.delayMinutes && p.delayMinutes > 10)).length;
@@ -72,6 +76,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      {/* Gerente Monitoring Mode Notice */}
+      {currentUser.role === 'gerente' && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <Eye className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <span className="font-bold text-amber-300 block">Modo Acompanhamento (Perfil Gerente)</span>
+              <span>Acesso aos painéis de monitoramento em tempo real igual ao Dono. Sem permissão de modificação de dados.</span>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-[10px] uppercase tracking-wider shrink-0 self-start sm:self-center">
+            Somente Consulta
+          </span>
+        </div>
+      )}
+
       {/* Top Banner Alert if any critical absent or delay */}
       {criticalAlerts.length > 0 && (
         <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 backdrop-blur-md shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">

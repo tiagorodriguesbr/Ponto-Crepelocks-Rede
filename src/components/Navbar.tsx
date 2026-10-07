@@ -43,8 +43,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout
 }) => {
   const isEmployee = currentUser.role === 'atendente';
+  const hasAccessToAllStores =
+    currentUser.role === 'dono' ||
+    currentUser.hasAccessToAllStores === true ||
+    currentUser.storeId === 'all';
 
-  const adminTabs = [
+  const baseAdminTabs = [
     { id: 'dashboard', label: 'Visão Geral' },
     { id: 'aderencia', label: 'Aderência à Escala' },
     { id: 'escalas', label: 'Escalas (6x1 / 12x36)' },
@@ -54,13 +58,19 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'relatorios', label: 'Relatórios & Folha' }
   ];
 
+  // If gerente is NOT exempt from punch clock, give them the "Bater Ponto" tab as well
+  const managerTabs = [
+    ...(!currentUser.exemptFromPunchClock ? [{ id: 'bater_ponto', label: '⏱️ Bater Ponto' }] : []),
+    ...baseAdminTabs
+  ];
+
   const employeeTabs = [
     { id: 'bater_ponto', label: 'Meu Ponto Eletrônico' },
     { id: 'minha_aderencia', label: 'Minha Escala & Aderência' },
     { id: 'meu_historico', label: 'Meus Comprovantes Digitais' }
   ];
 
-  const tabs = isEmployee ? employeeTabs : adminTabs;
+  const tabs = isEmployee ? employeeTabs : currentUser.role === 'gerente' ? managerTabs : baseAdminTabs;
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md transition-colors">
@@ -91,7 +101,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onChange={(e) => onStoreChange(e.target.value)}
                 className="bg-transparent text-xs font-semibold text-foreground focus:outline-none cursor-pointer py-1 pr-2"
               >
-                <option value="all" className="bg-zinc-900 text-white">Todas as Lojas Crepelocks</option>
+                {hasAccessToAllStores && (
+                  <option value="all" className="bg-zinc-900 text-white">Todas as Lojas Crepelocks</option>
+                )}
                 {stores.map((s) => (
                   <option key={s.id} value={s.id} className="bg-zinc-900 text-white">
                     {s.name} ({s.code})
@@ -142,7 +154,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {currentUser.name.split(' ')[0]}
                 </div>
                 <div className="text-[10px] text-emerald-400 font-semibold uppercase">
-                  {currentUser.role}
+                  {currentUser.role === 'dono'
+                    ? '👑 Dono'
+                    : currentUser.role === 'gerente'
+                    ? currentUser.exemptFromPunchClock
+                      ? '🛡️ Gerente (Confiança)'
+                      : '⏱️ Gerente (Bate Ponto)'
+                    : 'Atendente'}
                 </div>
               </div>
             </div>

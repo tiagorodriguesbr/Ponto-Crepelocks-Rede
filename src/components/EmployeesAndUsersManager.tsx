@@ -13,7 +13,10 @@ import {
   Mail,
   Phone,
   Eye,
-  EyeOff
+  EyeOff,
+  Globe,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { UserAccount, Store, Role, ScheduleType, UserPermissions } from '../types';
 import { StorageService } from '../services/storage';
@@ -31,6 +34,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   currentUser,
   onDataUpdated
 }) => {
+  const isReadOnly = currentUser.role === 'gerente';
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [filterRole, setFilterRole] = useState<string>('all');
@@ -43,6 +47,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const [password, setPassword] = useState<string>('123456');
   const [role, setRole] = useState<Role>('atendente');
   const [storeId, setStoreId] = useState<string>(stores[0]?.id || 'store-1');
+  const [hasAccessToAllStores, setHasAccessToAllStores] = useState<boolean>(false);
   const [positionTitle, setPositionTitle] = useState<string>('Atendente de Balcão & Crepeira');
   const [cpf, setCpf] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
@@ -51,6 +56,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const [defaultShiftEnd, setDefaultShiftEnd] = useState<string>('16:20');
   const [lunchDurationMin, setLunchDurationMin] = useState<number>(60);
   const [mfaEnabled, setMfaEnabled] = useState<boolean>(false);
+  const [exemptFromPunchClock, setExemptFromPunchClock] = useState<boolean>(false);
 
   // Granular permissions
   const [permissions, setPermissions] = useState<UserPermissions>({
@@ -67,9 +73,12 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setRole(newRole);
     if (newRole === 'dono') {
       setPositionTitle('Diretor / Dono');
+      setStoreId('all');
+      setHasAccessToAllStores(true);
       setScheduleType('5x2');
       setDefaultShiftStart('09:00');
       setDefaultShiftEnd('18:00');
+      setExemptFromPunchClock(true); // Dono nunca bate ponto
       setPermissions({
         canEditSchedules: true,
         canApproveOccurrences: true,
@@ -84,20 +93,27 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       setScheduleType('6x1');
       setDefaultShiftStart('08:00');
       setDefaultShiftEnd('16:20');
+      setStoreId('all'); // Padrão: vinculado a todas as lojas
+      setHasAccessToAllStores(true);
+      setExemptFromPunchClock(true); // Padrão: Cargo de Confiança (o Dono pode alterar para bater ponto)
+      // Gerente tem acesso de acompanhamento aos painéis (sem poder modificar)
       setPermissions({
-        canEditSchedules: true,
-        canApproveOccurrences: true,
-        canManageEmployees: true,
-        canViewFinancialReports: false,
-        canUploadCertificates: true,
+        canEditSchedules: false,
+        canApproveOccurrences: false,
+        canManageEmployees: false,
+        canViewFinancialReports: true,
+        canUploadCertificates: false,
         canExportPayroll: true,
         canEditStores: false
       });
     } else {
       setPositionTitle('Atendente de Balcão & Crepeira');
+      setStoreId(stores[0]?.id || 'store-1');
+      setHasAccessToAllStores(false);
       setScheduleType('6x1');
       setDefaultShiftStart('08:00');
       setDefaultShiftEnd('16:20');
+      setExemptFromPunchClock(false);
       setPermissions({
         canEditSchedules: false,
         canApproveOccurrences: false,
@@ -123,13 +139,17 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     ];
     const avatarColor = colors[Math.floor(Math.random() * colors.length)];
 
+    const isAllStores = role === 'dono' || storeId === 'all' || hasAccessToAllStores;
+    const isExempt = role === 'dono' ? true : exemptFromPunchClock;
+
     const newUser: UserAccount = {
       id: `user-${Date.now()}`,
       name,
       email: email.trim().toLowerCase(),
       passwordHash: password,
       role,
-      storeId,
+      storeId: isAllStores ? 'all' : storeId,
+      hasAccessToAllStores: isAllStores,
       positionTitle,
       cpf: cpf || '000.000.000-00',
       phone: phone || '(11) 90000-0000',
@@ -140,21 +160,24 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       lunchDurationMin,
       active: true,
       mfaEnabled,
+      exemptFromPunchClock: isExempt,
       avatarColor,
       permissions
     };
 
     StorageService.addUser(newUser);
 
-    // Auto-generate initial schedule for current month
-    StorageService.generateMonthlySchedule(
-      newUser.id,
-      scheduleType,
-      2026,
-      10,
-      defaultShiftStart,
-      defaultShiftEnd
-    );
+    // Auto-generate initial schedule for current month if required to clock in
+    if (!newUser.exemptFromPunchClock) {
+      StorageService.generateMonthlySchedule(
+        newUser.id,
+        scheduleType,
+        2026,
+        10,
+        defaultShiftStart,
+        defaultShiftEnd
+      );
+    }
 
     setShowAddModal(false);
     resetForm();
@@ -164,6 +187,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const handleUpdateUser = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
+
+    // Enforce business rules: Dono never punches clock
+    if (editingUser.role === 'dono') {
+      editingUser.exemptFromPunchClock = true;
+      editingUser.hasAccessToAllStores = true;
+      editingUser.storeId = 'all';
+    } else if (editingUser.storeId === 'all') {
+      editingUser.hasAccessToAllStores = true;
+    }
 
     StorageService.updateUser(editingUser);
     setEditingUser(null);
@@ -175,6 +207,9 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setEmail('');
     setPassword('123456');
     setRole('atendente');
+    setStoreId(stores[0]?.id || 'store-1');
+    setHasAccessToAllStores(false);
+    setExemptFromPunchClock(false);
     setCpf('');
     setPhone('');
     setPositionTitle('Atendente de Balcão & Crepeira');
@@ -193,13 +228,27 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   // Filter users
   const filteredUsers = users.filter((u) => {
     if (filterRole !== 'all' && u.role !== filterRole) return false;
-    if (filterStore !== 'all' && u.storeId !== filterStore) return false;
+    if (filterStore !== 'all') {
+      const isLinkedToAll = u.hasAccessToAllStores || u.storeId === 'all' || u.role === 'dono';
+      if (!isLinkedToAll && u.storeId !== filterStore) return false;
+    }
     return true;
   });
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
-      {/* Banner */}
+      {/* Banner de Modo Somente Leitura para Gerente */}
+      {isReadOnly && (
+        <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 backdrop-blur-md flex items-center gap-3 text-amber-200">
+          <Eye className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="text-xs">
+            <span className="font-bold text-amber-300 block">Modo Acompanhamento (Perfil Gerente)</span>
+            <span>Você tem acesso aos painéis de acompanhamento em tempo real. Criações, edições e alterações são restritas exclusivamente ao perfil Dono.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Banner Principal */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border bg-card/60 backdrop-blur-md border-border shadow-md">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -207,20 +256,22 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
             <span>Colaboradores, Perfis & Níveis de Permissão</span>
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
-            Crie acessos para funcionários e gerentes com emails corporativos, senhas, autenticação multifator (MFA) e permissões personalizadas.
+            Gestão da equipe Crepelocks: Dono (não bate ponto e controle total), Gerente (acompanhamento dos painéis, com ou sem ponto como cargo de confiança) e Atendentes.
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            resetForm();
-            setShowAddModal(true);
-          }}
-          className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-950/40"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Novo Acesso / Colaborador</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={() => {
+              resetForm();
+              setShowAddModal(true);
+            }}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-950/40"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Novo Acesso / Colaborador</span>
+          </button>
+        )}
       </div>
 
       {/* Filter toolbar */}
@@ -233,7 +284,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
             className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-zinc-200 text-xs focus:outline-none focus:border-emerald-500"
           >
             <option value="all">Todos os Cargos</option>
-            <option value="dono">Dono (Administrador)</option>
+            <option value="dono">Dono (Não Bate Ponto)</option>
             <option value="gerente">Gerente de Loja</option>
             <option value="atendente">Atendente</option>
           </select>
@@ -264,16 +315,17 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
               <tr>
                 <th className="py-3 px-3">Colaborador</th>
                 <th className="py-3 px-3">Login / E-mail</th>
-                <th className="py-3 px-3">Senha Atual</th>
-                <th className="py-3 px-3">Cargo & Nível</th>
-                <th className="py-3 px-3">Loja Vinculada</th>
+                <th className="py-3 px-3">Senha</th>
+                <th className="py-3 px-3">Cargo & Perfil</th>
+                <th className="py-3 px-3">Vínculo com Loja</th>
+                <th className="py-3 px-3">Regime de Ponto</th>
                 <th className="py-3 px-3">Escala</th>
-                <th className="py-3 px-3">Segurança MFA</th>
                 <th className="py-3 px-3 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60 font-mono">
               {filteredUsers.map((user) => {
+                const isAllStores = user.hasAccessToAllStores || user.storeId === 'all' || user.role === 'dono';
                 const store = stores.find((s) => s.id === user.storeId);
                 const isPasswordShown = showPasswordMap[user.id];
 
@@ -291,7 +343,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                         <div>
                           <div className="font-bold text-white text-xs">{user.name}</div>
                           <div className="text-[10px] text-zinc-400 font-normal">
-                            CPF: {user.cpf || 'Não cadastrado'}
+                            CPF: {user.cpf || 'Não informado'}
                           </div>
                         </div>
                       </div>
@@ -335,9 +387,9 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                         }`}
                       >
                         {user.role === 'dono'
-                          ? 'DONO (ADMIN)'
+                          ? '👑 DONO (TOTAL)'
                           : user.role === 'gerente'
-                          ? 'GERENTE DE LOJA'
+                          ? 'GERENTE (ACOMPANHAMENTO)'
                           : 'ATENDENTE'}
                       </span>
                       <p className="text-[10px] text-zinc-400 mt-0.5 font-sans">
@@ -346,36 +398,67 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     </td>
 
                     <td className="py-3 px-3 font-sans text-zinc-300">
-                      {store?.name || 'Sede Crepelocks'}
-                    </td>
-
-                    <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-800 text-zinc-300">
-                        {user.scheduleType}
-                      </span>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        {user.defaultShiftStart} - {user.defaultShiftEnd}
-                      </p>
+                      {isAllStores ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 text-[11px]">
+                          <Globe className="w-3 h-3" /> Todas as Lojas (Rede + Futuras)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-zinc-300 text-[11px]">
+                          <Building2 className="w-3 h-3 text-zinc-500" />
+                          {store?.name || 'Unidade'} ({store?.code || 'LJ'})
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3 px-3 font-sans">
-                      {user.mfaEnabled ? (
-                        <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold">
-                          <ShieldCheck className="w-3.5 h-3.5" /> Ativo
+                      {user.role === 'dono' ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700">
+                          👑 Não Bate Ponto
                         </span>
+                      ) : user.role === 'gerente' ? (
+                        user.exemptFromPunchClock ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            🛡️ Confiança (Não Bate Ponto)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            ⏱️ Bate Ponto Diário
+                          </span>
+                        )
                       ) : (
-                        <span className="text-[11px] text-zinc-500">Padrão</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                          ⏱️ Bate Ponto Obrigatório
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="py-3 px-3">
+                      {user.role === 'dono' || (user.role === 'gerente' && user.exemptFromPunchClock) ? (
+                        <span className="text-[10px] text-zinc-500">Horário Livre</span>
+                      ) : (
+                        <>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-800 text-zinc-300">
+                            {user.scheduleType}
+                          </span>
+                          <p className="text-[10px] text-zinc-500 mt-0.5">
+                            {user.defaultShiftStart} - {user.defaultShiftEnd}
+                          </p>
+                        </>
                       )}
                     </td>
 
                     <td className="py-3 px-3 text-right font-sans">
-                      <button
-                        onClick={() => setEditingUser(user)}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-medium transition-all inline-flex items-center gap-1 border border-zinc-700"
-                      >
-                        <Edit2 className="w-3 h-3 text-emerald-400" />
-                        <span>Editar</span>
-                      </button>
+                      {isReadOnly ? (
+                        <span className="text-[11px] text-zinc-500 italic">Visualização</span>
+                      ) : (
+                        <button
+                          onClick={() => setEditingUser(user)}
+                          className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-medium transition-all inline-flex items-center gap-1 border border-zinc-700"
+                        >
+                          <Edit2 className="w-3 h-3 text-emerald-400" />
+                          <span>Editar</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -453,20 +536,102 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                 </div>
 
                 <div>
-                  <label className="block text-zinc-400 mb-1 font-medium">Loja Vinculada</label>
+                  <label className="block text-zinc-400 mb-1 font-medium">Vínculo com Loja</label>
                   <select
                     value={storeId}
-                    onChange={(e) => setStoreId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStoreId(val);
+                      setHasAccessToAllStores(val === 'all');
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-semibold"
                   >
+                    <option value="all" className="bg-zinc-900 text-emerald-400 font-bold">
+                      🌐 TODAS as Lojas (Rede Global + Lojas Futuras)
+                    </option>
                     {stores.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
+                      <option key={s.id} value={s.id} className="bg-zinc-900 text-white">
+                        🏬 {s.name} ({s.code})
                       </option>
                     ))}
                   </select>
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">
+                    {storeId === 'all'
+                      ? '⭐ Vinculado a todas as lojas atuais e a qualquer nova loja que você cadastrar depois.'
+                      : 'Vinculado exclusivamente a esta unidade.'}
+                  </span>
                 </div>
               </div>
+
+              {/* Regime de Ponto do Gerente (Decisão do Dono) */}
+              {role === 'gerente' && (
+                <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                      Regime de Ponto do Gerente (Decisão do Dono)
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-mono">Art. 62, II da CLT</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    Como Dono, escolha se o gerente é isento de bater ponto como cargo de confiança ou se deve registrar ponto normalmente:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div
+                      onClick={() => setExemptFromPunchClock(true)}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-start gap-2.5 ${
+                        exemptFromPunchClock
+                          ? 'bg-emerald-500/10 border-emerald-500 text-white'
+                          : 'bg-zinc-950/80 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="regimePontoGerente"
+                        checked={exemptFromPunchClock}
+                        onChange={() => setExemptFromPunchClock(true)}
+                        className="mt-0.5 text-emerald-500"
+                      />
+                      <div>
+                        <span className="font-bold block text-emerald-400">🛡️ Cargo de Confiança (Não Bate Ponto)</span>
+                        <span className="text-[10px] text-zinc-400 block mt-0.5">
+                          Isento de registro de jornada diária. Não gera alertas de atraso ou ausência.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      onClick={() => setExemptFromPunchClock(false)}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-start gap-2.5 ${
+                        !exemptFromPunchClock
+                          ? 'bg-amber-500/10 border-amber-500 text-white'
+                          : 'bg-zinc-950/80 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="regimePontoGerente"
+                        checked={!exemptFromPunchClock}
+                        onChange={() => setExemptFromPunchClock(false)}
+                        className="mt-0.5 text-amber-500"
+                      />
+                      <div>
+                        <span className="font-bold block text-amber-400">⏱️ Bate Ponto Obrigatório</span>
+                        <span className="text-[10px] text-zinc-400 block mt-0.5">
+                          O gerente terá a aba "Bater Ponto" para registrar entrada, almoço e saída.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {role === 'dono' && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span><strong>Perfil de Dono:</strong> Isento de registro de ponto (não bate ponto) e vinculado automaticamente a todas as lojas da rede.</span>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -728,22 +893,91 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                   </select>
                 </div>
                 <div>
-                  <label className="block text-zinc-400 mb-1">Loja</label>
+                  <label className="block text-zinc-400 mb-1">Vínculo com Loja</label>
                   <select
                     value={editingUser.storeId}
-                    onChange={(e) =>
-                      setEditingUser({ ...editingUser, storeId: e.target.value })
-                    }
-                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditingUser({
+                        ...editingUser,
+                        storeId: val,
+                        hasAccessToAllStores: val === 'all'
+                      });
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-semibold"
                   >
+                    <option value="all" className="bg-zinc-900 text-emerald-400 font-bold">
+                      🌐 TODAS as Lojas (Rede Global + Futuras)
+                    </option>
                     {stores.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name}
+                        🏬 {s.name} ({s.code})
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              {/* Regime de Ponto para Gerente na Edição */}
+              {editingUser.role === 'gerente' && (
+                <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                      Regime de Ponto do Gerente (Cargo de Confiança)
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-mono">Art. 62, II da CLT</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div
+                      onClick={() => setEditingUser({ ...editingUser, exemptFromPunchClock: true })}
+                      className={`p-2 rounded-lg border cursor-pointer flex items-center gap-2 ${
+                        editingUser.exemptFromPunchClock
+                          ? 'bg-emerald-500/15 border-emerald-500 text-white'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        checked={Boolean(editingUser.exemptFromPunchClock)}
+                        onChange={() => setEditingUser({ ...editingUser, exemptFromPunchClock: true })}
+                        className="text-emerald-500"
+                      />
+                      <div>
+                        <span className="text-[11px] font-semibold text-emerald-400 block">🛡️ Cargo de Confiança</span>
+                        <span className="text-[10px] text-zinc-500 block">Não bate ponto</span>
+                      </div>
+                    </div>
+
+                    <div
+                      onClick={() => setEditingUser({ ...editingUser, exemptFromPunchClock: false })}
+                      className={`p-2 rounded-lg border cursor-pointer flex items-center gap-2 ${
+                        !editingUser.exemptFromPunchClock
+                          ? 'bg-amber-500/15 border-amber-500 text-white'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        checked={!editingUser.exemptFromPunchClock}
+                        onChange={() => setEditingUser({ ...editingUser, exemptFromPunchClock: false })}
+                        className="text-amber-500"
+                      />
+                      <div>
+                        <span className="text-[11px] font-semibold text-amber-400 block">⏱️ Bate Ponto Diário</span>
+                        <span className="text-[10px] text-zinc-500 block">Registra horários</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editingUser.role === 'dono' && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Perfil Dono é isento de bater ponto e vinculado a todas as lojas.</span>
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-3">
                 <div>

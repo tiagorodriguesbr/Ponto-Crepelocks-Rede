@@ -40,7 +40,8 @@ export const INITIAL_USERS: UserAccount[] = [
     email: 'admin@admin.com',
     passwordHash: '123456',
     role: 'dono',
-    storeId: 'store-1',
+    storeId: 'all',
+    hasAccessToAllStores: true,
     positionTitle: 'Diretor / Sócio Proprietário',
     cpf: '123.456.789-00',
     phone: '(11) 98765-4321',
@@ -51,6 +52,7 @@ export const INITIAL_USERS: UserAccount[] = [
     lunchDurationMin: 60,
     active: true,
     mfaEnabled: false,
+    exemptFromPunchClock: true,
     avatarColor: 'from-emerald-500 to-teal-700',
     permissions: {
       canEditSchedules: true,

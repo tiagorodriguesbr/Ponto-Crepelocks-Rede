@@ -11,7 +11,8 @@ import {
   Edit3,
   Check,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Eye
 } from 'lucide-react';
 import { UserAccount, PunchRecord, Store } from '../types';
 import { StorageService } from '../services/storage';
@@ -20,6 +21,7 @@ interface AdherenceMonitorProps {
   users: UserAccount[];
   punches: PunchRecord[];
   stores: Store[];
+  currentUser?: UserAccount;
   onDataUpdated: () => void;
 }
 
@@ -27,8 +29,10 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
   users,
   punches,
   stores,
+  currentUser,
   onDataUpdated
 }) => {
+  const isReadOnly = currentUser?.role === 'gerente';
   const [selectedStore, setSelectedStore] = useState<string>('all');
   const [selectedSchedule, setSelectedSchedule] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>('2026-10-06');
@@ -113,6 +117,17 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      {/* Banner de Modo Somente Leitura para Gerente */}
+      {isReadOnly && (
+        <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 backdrop-blur-md flex items-center gap-3 text-amber-200">
+          <Eye className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="text-xs">
+            <span className="font-bold text-amber-300 block">Modo Acompanhamento (Perfil Gerente)</span>
+            <span>Você tem acesso de consulta ao monitoramento de pontualidade e atrasos da equipe em tempo real. Ajustes de horários de ponto são restritos ao Dono.</span>
+          </div>
+        </div>
+      )}
+
       {/* Title & Overview Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border bg-card/60 backdrop-blur-md border-border shadow-md">
         <div>
@@ -323,13 +338,17 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right font-sans">
-                        <button
-                          onClick={() => handleOpenAdjust(punch)}
-                          className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-medium transition-all inline-flex items-center gap-1 border border-zinc-700"
-                        >
-                          <Edit3 className="w-3 h-3 text-emerald-400" />
-                          <span>Ajustar</span>
-                        </button>
+                        {isReadOnly ? (
+                          <span className="text-[11px] text-zinc-500 italic">Visualização</span>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenAdjust(punch)}
+                            className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-medium transition-all inline-flex items-center gap-1 border border-zinc-700"
+                          >
+                            <Edit3 className="w-3 h-3 text-emerald-400" />
+                            <span>Ajustar</span>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

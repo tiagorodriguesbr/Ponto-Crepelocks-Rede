@@ -61,7 +61,9 @@ export default function App() {
   useEffect(() => {
     if (currentUser?.role === 'atendente') {
       setActiveTab('bater_ponto');
-    } else if (activeTab === 'bater_ponto') {
+    } else if (currentUser?.role === 'dono' && activeTab === 'bater_ponto') {
+      setActiveTab('dashboard');
+    } else if (currentUser?.role === 'gerente' && currentUser?.exemptFromPunchClock && activeTab === 'bater_ponto') {
       setActiveTab('dashboard');
     }
   }, [currentUser]);
@@ -85,6 +87,11 @@ export default function App() {
   const handleLoginSuccess = (user: UserAccount) => {
     StorageService.setCurrentUser(user);
     setCurrentUser(user);
+    if (user.role === 'dono' || user.hasAccessToAllStores || user.storeId === 'all') {
+      setSelectedStoreId('all');
+    } else {
+      setSelectedStoreId(user.storeId || 'all');
+    }
     setIsLoginModalOpen(false);
     reloadData();
   };
@@ -150,6 +157,16 @@ export default function App() {
         ) : (
           /* Painel Administrativo Completo para Dono e Gerente */
           <>
+            {activeTab === 'bater_ponto' && (
+              <EmployeePunchScreen
+                currentUser={currentUser}
+                currentStore={currentStore || stores[0]}
+                punches={punches}
+                schedules={schedules}
+                onPunchRegistered={reloadData}
+              />
+            )}
+
             {activeTab === 'dashboard' && (
               <AdminDashboard
                 currentUser={currentUser}
@@ -168,6 +185,7 @@ export default function App() {
                 users={users}
                 punches={punches}
                 stores={stores}
+                currentUser={currentUser}
                 onDataUpdated={reloadData}
               />
             )}
@@ -177,6 +195,7 @@ export default function App() {
                 users={users}
                 schedules={schedules}
                 stores={stores}
+                currentUser={currentUser}
                 onDataUpdated={reloadData}
               />
             )}
@@ -187,6 +206,7 @@ export default function App() {
                 stores={stores}
                 occurrences={occurrences}
                 certificates={certificates}
+                currentUser={currentUser}
                 onDataUpdated={reloadData}
               />
             )}
@@ -196,6 +216,7 @@ export default function App() {
                 stores={stores}
                 users={users}
                 punches={punches}
+                currentUser={currentUser}
                 onDataUpdated={reloadData}
               />
             )}

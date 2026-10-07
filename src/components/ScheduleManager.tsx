@@ -13,7 +13,8 @@ import {
   Coffee,
   Check,
   X,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Eye
 } from 'lucide-react';
 import { UserAccount, ScheduleDay, Store, ScheduleType } from '../types';
 import { StorageService } from '../services/storage';
@@ -22,6 +23,7 @@ interface ScheduleManagerProps {
   users: UserAccount[];
   schedules: ScheduleDay[];
   stores: Store[];
+  currentUser?: UserAccount;
   onDataUpdated: () => void;
 }
 
@@ -29,8 +31,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   users,
   schedules,
   stores,
+  currentUser,
   onDataUpdated
 }) => {
+  const isReadOnly = currentUser?.role === 'gerente';
   const [selectedStoreId, setSelectedStoreId] = useState<string>('all');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(
     users.find((u) => u.role === 'atendente')?.id || users[0].id
@@ -130,6 +134,17 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      {/* Banner de Modo Somente Leitura para Gerente */}
+      {isReadOnly && (
+        <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 backdrop-blur-md flex items-center gap-3 text-amber-200">
+          <Eye className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="text-xs">
+            <span className="font-bold text-amber-300 block">Modo Acompanhamento (Perfil Gerente)</span>
+            <span>Você tem acesso de consulta às escalas de trabalho da equipe. A geração automática de escalas e permutas são restritas ao perfil Dono.</span>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner & Fast Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border bg-card/60 backdrop-blur-md border-border shadow-md">
         <div>
@@ -142,15 +157,17 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSwapModal(true)}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-all flex items-center gap-1.5"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Troca de Turno Rápida</span>
-          </button>
-        </div>
+        {!isReadOnly && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSwapModal(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-all flex items-center gap-1.5"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Troca de Turno Rápida</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Generator Control Panel */}
@@ -259,13 +276,20 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         </div>
 
         <div className="flex justify-end pt-2">
-          <button
-            onClick={handleGenerateAutomated}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-950/40"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Gerar Escala Mensal Completa ({scaleChoice})</span>
-          </button>
+          {isReadOnly ? (
+            <div className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700 flex items-center gap-1.5">
+              <Eye className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Modo Acompanhamento (Geração restrita ao Dono)</span>
+            </div>
+          ) : (
+            <button
+              onClick={handleGenerateAutomated}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-950/40"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Gerar Escala Mensal Completa ({scaleChoice})</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -30,6 +30,7 @@ export interface UserAccount {
   passwordHash: string; // Plain/encrypted storage representation
   role: Role;
   storeId: string;
+  hasAccessToAllStores?: boolean; // Vinculado a todas as lojas (atuais e futuras)
   positionTitle: string; // e.g. "Atendente de Balcão", "Gerente de Unidade", "Diretor Executivo"
   cpf?: string;
   phone?: string;
@@ -41,6 +42,7 @@ export interface UserAccount {
   active: boolean;
   mfaEnabled: boolean;
   mfaSecret?: string;
+  exemptFromPunchClock?: boolean; // Cargo de Confiança (Art. 62 CLT) ou Perfil de Dono
   permissions: UserPermissions;
   avatarColor?: string;
 }

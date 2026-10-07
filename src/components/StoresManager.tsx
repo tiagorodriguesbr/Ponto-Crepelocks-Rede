@@ -10,7 +10,8 @@ import {
   Clock,
   Edit2,
   X,
-  Check
+  Check,
+  Eye
 } from 'lucide-react';
 import { Store, UserAccount, PunchRecord } from '../types';
 import { StorageService } from '../services/storage';
@@ -19,6 +20,7 @@ interface StoresManagerProps {
   stores: Store[];
   users: UserAccount[];
   punches: PunchRecord[];
+  currentUser?: UserAccount;
   onDataUpdated: () => void;
 }
 
@@ -26,8 +28,10 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
   stores,
   users,
   punches,
+  currentUser,
   onDataUpdated
 }) => {
+  const isReadOnly = currentUser?.role === 'gerente';
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
 
@@ -74,6 +78,17 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      {/* Banner de Modo Somente Leitura para Gerente */}
+      {isReadOnly && (
+        <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 backdrop-blur-md flex items-center gap-3 text-amber-200">
+          <Eye className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="text-xs">
+            <span className="font-bold text-amber-300 block">Modo Acompanhamento (Perfil Gerente)</span>
+            <span>Você tem acesso aos indicadores e acompanhamento de todas as unidades da rede Crepelocks. O cadastro e edição de lojas são restritos ao Dono.</span>
+          </div>
+        </div>
+      )}
+
       {/* Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border bg-card/60 backdrop-blur-md border-border shadow-md">
         <div>
@@ -86,13 +101,15 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-950/40"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Cadastrar Nova Loja</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-950/40"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Cadastrar Nova Loja</span>
+          </button>
+        )}
       </div>
 
       {/* Stores Grid */}
@@ -131,13 +148,15 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => setEditingStore(store)}
-                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-                    title="Editar Loja"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
+                  {!isReadOnly && (
+                    <button
+                      onClick={() => setEditingStore(store)}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                      title="Editar Loja"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="mt-4 space-y-1.5 text-xs text-zinc-400">
