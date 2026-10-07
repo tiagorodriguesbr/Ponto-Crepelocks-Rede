@@ -85,7 +85,13 @@ export default function App() {
   const handleLoginSuccess = (user: UserAccount) => {
     StorageService.setCurrentUser(user);
     setCurrentUser(user);
+    setIsLoginModalOpen(false);
     reloadData();
+  };
+
+  const handleLogout = () => {
+    StorageService.setCurrentUser(null);
+    setCurrentUser(null);
   };
 
   const handleMarkNotificationRead = (id: string) => {
@@ -96,13 +102,6 @@ export default function App() {
   const handleMarkAllNotificationsRead = () => {
     StorageService.markAllNotificationsAsRead();
     reloadData();
-  };
-
-  const handleResetData = () => {
-    if (window.confirm('Deseja restaurar os dados de demonstração iniciais da Crepelocks?')) {
-      StorageService.resetAllData();
-      reloadData();
-    }
   };
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
@@ -123,20 +122,21 @@ export default function App() {
           onThemeChange={handleThemeChange}
           unreadNotificationsCount={unreadNotificationsCount}
           onOpenNotifications={() => setIsNotificationOpen(true)}
-          onOpenLoginModal={() => setIsLoginModalOpen(true)}
+          onLogout={handleLogout}
         />
       )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {!currentUser ? (
-          <div className="py-20 text-center">
-            <button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="px-6 py-3 rounded-2xl bg-emerald-600 text-white font-bold"
-            >
-              Fazer Login no Ponto Crepelocks
-            </button>
+          <div className="py-12 flex items-center justify-center">
+            <LoginModal
+              users={users}
+              currentUser={currentUser}
+              onLoginSuccess={handleLoginSuccess}
+              isOpen={true}
+              onClose={() => {}}
+            />
           </div>
         ) : currentUser.role === 'atendente' ? (
           /* Restrito ao funcionário (Bater Ponto, Aderência e Comprovantes) */
@@ -234,21 +234,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="text-xs hover:text-emerald-400 transition-colors"
-            >
-              Trocar de Usuário ({currentUser?.role || 'Visitante'})
-            </button>
-            <span>•</span>
-            <button
-              onClick={handleResetData}
-              className="text-xs hover:text-rose-400 flex items-center gap-1 transition-colors"
-              title="Restaurar dados de teste padrão"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Restaurar Demonstração</span>
-            </button>
+            <span className="text-zinc-500">Acesso Corporativo Seguro • Criptografia SHA-256</span>
           </div>
         </div>
       </footer>

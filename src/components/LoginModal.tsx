@@ -4,12 +4,10 @@ import {
   Mail,
   Key,
   ShieldCheck,
-  Building2,
   ArrowRight,
-  Shield,
-  CheckCircle,
   AlertCircle,
-  Sparkles
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { UserAccount } from '../types';
 
@@ -28,8 +26,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const [emailInput, setEmailInput] = useState<string>('admin@admin.com');
-  const [passwordInput, setPasswordInput] = useState<string>('123456');
+  const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // MFA state
@@ -50,7 +49,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     );
 
     if (!user) {
-      setErrorMessage('Credenciais inválidas. Verifique o e-mail e senha digitados.');
+      setErrorMessage('Credenciais inválidas. Verifique o e-mail e a senha digitados.');
       return;
     }
 
@@ -70,8 +69,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   const handleMfaSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate MFA verification
-    if (mfaCode.length === 6 || mfaCode === '123456') {
+    if (mfaCode.length === 6) {
       if (pendingUser) {
         onLoginSuccess(pendingUser);
         onClose();
@@ -83,15 +81,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  const handleQuickLogin = (user: UserAccount) => {
-    setEmailInput(user.email);
-    setPasswordInput(user.passwordHash);
-    onLoginSuccess(user);
-    onClose();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
       <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-zinc-900 border border-zinc-800 text-zinc-100 shadow-2xl relative overflow-hidden">
         {/* Subtle decorative glow */}
         <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
@@ -104,7 +95,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </div>
           <h2 className="text-xl font-bold tracking-tight text-white">CREPELOCKS</h2>
           <p className="text-xs text-zinc-400">
-            Plataforma Integrada de Ponto Eletrônico & Gestão RH
+            Plataforma Corporativa de Ponto Eletrônico & Gestão RH
           </p>
         </div>
 
@@ -134,20 +125,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-zinc-400 font-medium">Senha Segura</label>
-                <span className="text-[11px] text-zinc-500 font-mono">Padrão: 123456</span>
-              </div>
+              <label className="block text-zinc-400 mb-1 font-medium">Senha</label>
               <div className="relative">
                 <Key className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                  placeholder="Digite sua senha"
+                  className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:border-emerald-500 transition-colors"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
@@ -155,7 +150,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               type="submit"
               className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50"
             >
-              <span>Acessar Painel Crepelocks</span>
+              <span>Acessar Painel</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -168,7 +163,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <span>Autenticação em 2 Etapas (MFA)</span>
               </div>
               <p className="text-[11px] text-zinc-300">
-                Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador ou use o código de teste <strong className="text-white">123456</strong>.
+                Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador.
               </p>
             </div>
 
@@ -180,7 +175,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 required
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
-                placeholder="123456"
+                placeholder="000000"
                 className="w-full px-3 py-3 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-center font-mono text-lg tracking-widest focus:outline-none focus:border-emerald-500"
               />
             </div>
@@ -203,44 +198,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </form>
         )}
 
-        {/* Quick Demo Switcher Section */}
-        <div className="mt-6 pt-5 border-t border-zinc-800/80">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-emerald-400" />
-              <span>Acesso Rápido para Testes</span>
-            </span>
-            <span className="text-[10px] text-zinc-500">1-clique</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {users.slice(0, 4).map((user) => (
-              <button
-                key={user.id}
-                type="button"
-                onClick={() => handleQuickLogin(user)}
-                className="p-2 rounded-xl bg-zinc-950/70 border border-zinc-800/80 hover:border-emerald-500/50 hover:bg-zinc-800/50 text-left transition-all flex items-center gap-2"
-              >
-                <div
-                  className={`w-6 h-6 rounded-md bg-gradient-to-br ${
-                    user.avatarColor || 'from-emerald-600 to-teal-800'
-                  } flex items-center justify-center text-white font-bold text-[10px] shrink-0`}
-                >
-                  {user.name.charAt(0)}
-                </div>
-                <div className="truncate">
-                  <div className="font-bold text-white text-[11px] truncate">{user.name.split(' ')[0]}</div>
-                  <div className="text-[9px] text-emerald-400 uppercase font-semibold">
-                    {user.role}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Security Disclaimers */}
-        <div className="mt-5 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
+        <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-center gap-4 text-[10px] text-zinc-500">
           <span className="flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 text-emerald-400" />
             <span>Portaria MTP 671</span>

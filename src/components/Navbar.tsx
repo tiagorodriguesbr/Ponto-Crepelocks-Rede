@@ -26,7 +26,7 @@ interface NavbarProps {
   onThemeChange: (theme: ThemeStyle) => void;
   unreadNotificationsCount: number;
   onOpenNotifications: () => void;
-  onOpenLoginModal: () => void;
+  onLogout: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -40,7 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onThemeChange,
   unreadNotificationsCount,
   onOpenNotifications,
-  onOpenLoginModal
+  onLogout
 }) => {
   const isEmployee = currentUser.role === 'atendente';
 
@@ -127,29 +127,35 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </button>
 
-          {/* User profile dropdown button */}
-          <button
-            onClick={onOpenLoginModal}
-            className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-border bg-card/60 hover:bg-accent transition-all text-xs"
-            title="Trocar de usuário / Logout"
-          >
-            <div
-              className={`w-6 h-6 rounded-lg bg-gradient-to-br ${
-                currentUser.avatarColor || 'from-emerald-500 to-teal-700'
-              } flex items-center justify-center text-white font-bold text-[11px] shadow-sm`}
+          {/* User profile & Logout button */}
+          <div className="flex items-center gap-1.5 pl-1.5 border-l border-border">
+            <div className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-border bg-card/60 text-xs">
+              <div
+                className={`w-6 h-6 rounded-lg bg-gradient-to-br ${
+                  currentUser.avatarColor || 'from-emerald-500 to-teal-700'
+                } flex items-center justify-center text-white font-bold text-[11px] shadow-sm`}
+              >
+                {currentUser.name.charAt(0)}
+              </div>
+              <div className="hidden sm:block text-left">
+                <div className="font-bold text-foreground text-xs leading-tight truncate max-w-[120px]">
+                  {currentUser.name.split(' ')[0]}
+                </div>
+                <div className="text-[10px] text-emerald-400 font-semibold uppercase">
+                  {currentUser.role}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={onLogout}
+              className="p-2 rounded-xl text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all text-xs font-semibold flex items-center gap-1"
+              title="Encerrar sessão (Logout)"
             >
-              {currentUser.name.charAt(0)}
-            </div>
-            <div className="hidden sm:block text-left">
-              <div className="font-bold text-foreground text-xs leading-tight truncate max-w-[120px]">
-                {currentUser.name.split(' ')[0]}
-              </div>
-              <div className="text-[10px] text-emerald-400 font-semibold uppercase">
-                {currentUser.role}
-              </div>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground hidden sm:block" />
-          </button>
+              <LogOut className="w-4 h-4" />
+              <span className="hidden md:inline text-[11px]">Sair</span>
+            </button>
+          </div>
         </div>
       </div>
 

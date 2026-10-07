@@ -93,7 +93,7 @@ export const StorageService = {
 
   // Current session
   getCurrentUser(): UserAccount | null {
-    return getFromStorage<UserAccount | null>(STORAGE_KEYS.CURRENT_USER, INITIAL_USERS[0]);
+    return getFromStorage<UserAccount | null>(STORAGE_KEYS.CURRENT_USER, null);
   },
   setCurrentUser(user: UserAccount | null): void {
     saveToStorage(STORAGE_KEYS.CURRENT_USER, user);
