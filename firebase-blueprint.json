@@ -1,0 +1,179 @@
+{
+  "entities": {
+    "Store": {
+      "title": "Store",
+      "description": "Unidade ou loja física da Crepelocks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 32 },
+        "address": { "type": "string", "maxLength": 256 },
+        "city": { "type": "string", "maxLength": 128 },
+        "active": { "type": "boolean" },
+        "managerName": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["id", "name", "code", "active"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Colaborador ou Administrador da Crepelocks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "passwordHash": { "type": "string", "maxLength": 256 },
+        "role": { "type": "string", "enum": ["dono", "gerente", "atendente"] },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "positionTitle": { "type": "string", "maxLength": 128 },
+        "cpf": { "type": "string", "maxLength": 32 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "admissionDate": { "type": "string", "maxLength": 32 },
+        "scheduleType": { "type": "string", "enum": ["6x1", "12x36", "5x2"] },
+        "defaultShiftStart": { "type": "string", "maxLength": 16 },
+        "defaultShiftEnd": { "type": "string", "maxLength": 16 },
+        "lunchDurationMin": { "type": "number" },
+        "active": { "type": "boolean" },
+        "mfaEnabled": { "type": "boolean" },
+        "avatarColor": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "name", "email", "role", "storeId", "active"]
+    },
+    "PunchRecord": {
+      "title": "PunchRecord",
+      "description": "Registro de ponto diário e carimbo criptográfico",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "entry": { "type": "string", "maxLength": 16 },
+        "lunchStart": { "type": "string", "maxLength": 16 },
+        "lunchEnd": { "type": "string", "maxLength": 16 },
+        "exit": { "type": "string", "maxLength": 16 },
+        "scheduledStart": { "type": "string", "maxLength": 16 },
+        "scheduledEnd": { "type": "string", "maxLength": 16 },
+        "scheduledLunchMin": { "type": "number" },
+        "workedMinutes": { "type": "number" },
+        "expectedMinutes": { "type": "number" },
+        "delayMinutes": { "type": "number" },
+        "extraMinutes": { "type": "number" },
+        "adherencePercentage": { "type": "number" },
+        "status": { "type": "string", "maxLength": 32 },
+        "statusLabel": { "type": "string", "maxLength": 128 },
+        "hashReceipt": { "type": "string", "maxLength": 128 },
+        "locationIp": { "type": "string", "maxLength": 128 },
+        "notes": { "type": "string", "maxLength": 256 }
+      },
+      "required": ["id", "employeeId", "date", "status"]
+    },
+    "ScheduleDay": {
+      "title": "ScheduleDay",
+      "description": "Escala individual programada para o dia",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "shiftStart": { "type": "string", "maxLength": 16 },
+        "shiftEnd": { "type": "string", "maxLength": 16 },
+        "isOffDay": { "type": "boolean" },
+        "isExtraDay": { "type": "boolean" },
+        "scheduleType": { "type": "string", "enum": ["6x1", "12x36", "5x2"] },
+        "notes": { "type": "string", "maxLength": 256 }
+      },
+      "required": ["id", "employeeId", "date", "isOffDay"]
+    },
+    "OccurrenceRecord": {
+      "title": "OccurrenceRecord",
+      "description": "Lançamento de ocorrência no ponto",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "employeeName": { "type": "string", "maxLength": 128 },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "type": { "type": "string", "enum": ["folga", "dia_extra", "falta_justificada", "falta_injustificada", "abono_horas"] },
+        "hoursAbono": { "type": "number" },
+        "reason": { "type": "string", "maxLength": 256 },
+        "registeredBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "employeeId", "date", "type", "reason"]
+    },
+    "MedicalCertificate": {
+      "title": "MedicalCertificate",
+      "description": "Atestado médico arquivado no prontuário digital",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "employeeName": { "type": "string", "maxLength": 128 },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "startDate": { "type": "string", "maxLength": 32 },
+        "daysOff": { "type": "number" },
+        "cidCode": { "type": "string", "maxLength": 64 },
+        "doctorName": { "type": "string", "maxLength": 128 },
+        "doctorCrm": { "type": "string", "maxLength": 64 },
+        "fileName": { "type": "string", "maxLength": 128 },
+        "fileSizeKb": { "type": "number" },
+        "status": { "type": "string", "enum": ["aprovado", "em_analise", "rejeitado"] },
+        "notes": { "type": "string", "maxLength": 256 },
+        "uploadedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "employeeId", "startDate", "daysOff", "status"]
+    },
+    "SystemNotification": {
+      "title": "SystemNotification",
+      "description": "Notificação operacional de ponto e ausência",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 64 },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "employeeName": { "type": "string", "maxLength": 128 },
+        "storeId": { "type": "string", "maxLength": 128 },
+        "storeName": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 256 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "read": { "type": "boolean" },
+        "severity": { "type": "string", "enum": ["warning", "error", "info"] }
+      },
+      "required": ["id", "title", "message", "read"]
+    }
+  },
+  "firestore": {
+    "/stores/{storeId}": {
+      "schema": { "$ref": "#/entities/Store" },
+      "description": "Lojas da Crepelocks"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Contas de funcionários e administradores"
+    },
+    "/punches/{punchId}": {
+      "schema": { "$ref": "#/entities/PunchRecord" },
+      "description": "Marcações de ponto diário"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": { "$ref": "#/entities/ScheduleDay" },
+      "description": "Grade de escalas 6x1 e 12x36"
+    },
+    "/occurrences/{occurrenceId}": {
+      "schema": { "$ref": "#/entities/OccurrenceRecord" },
+      "description": "Ocorrências de folgas e faltas"
+    },
+    "/certificates/{certificateId}": {
+      "schema": { "$ref": "#/entities/MedicalCertificate" },
+      "description": "Prontuário médico digital e atestados"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/SystemNotification" },
+      "description": "Alertas em tempo real"
+    }
+  }
+}

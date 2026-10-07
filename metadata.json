@@ -1,0 +1,6 @@
+{
+  "name": "Crepelocks Ponto & Gestão RH",
+  "description": "Sistema integrado de controle de ponto eletrônico, gestão de escalas 6x1 e 12x36, aderência operacional, prontuário digital e fechamento de folha para a Crepelocks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

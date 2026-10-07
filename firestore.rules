@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Stores collection
+    match /stores/{storeId} {
+      allow read: if true;
+      allow write: if isValidId(storeId);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isValidId(userId);
+    }
+
+    // Punches collection (Registros de Ponto)
+    match /punches/{punchId} {
+      allow read: if true;
+      allow create, update: if isValidId(punchId);
+      allow delete: if false; // Inviolabilidade do ponto (Portaria 671)
+    }
+
+    // Schedules collection (Escalas 6x1 e 12x36)
+    match /schedules/{scheduleId} {
+      allow read: if true;
+      allow write: if isValidId(scheduleId);
+    }
+
+    // Occurrences collection (Folgas, Faltas, Abonos)
+    match /occurrences/{occurrenceId} {
+      allow read: if true;
+      allow write: if isValidId(occurrenceId);
+    }
+
+    // Certificates collection (Prontuário Médico Digital)
+    match /certificates/{certificateId} {
+      allow read: if true;
+      allow write: if isValidId(certificateId);
+    }
+
+    // Notifications collection (Alertas Operacionais)
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow write: if isValidId(notificationId);
+    }
+
+    // Test connection doc
+    match /test/{docId} {
+      allow read: if true;
+    }
+  }
+}

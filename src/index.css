@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@layer base {
+  :root,
+  body[data-theme="dark-emerald"] {
+    --bg-main: #04100c;
+    --card-bg: #091a14;
+    --border-color: rgba(16, 185, 129, 0.2);
+    --text-primary: #f0fdf4;
+    --text-secondary: #a7f3d0;
+    --accent: #10b981;
+    color-scheme: dark;
+  }
+
+  body[data-theme="dark-obsidian"] {
+    --bg-main: #09090b;
+    --card-bg: #141417;
+    --border-color: rgba(63, 63, 70, 0.4);
+    --text-primary: #fafafa;
+    --text-secondary: #a1a1aa;
+    --accent: #10b981;
+    color-scheme: dark;
+  }
+
+  body[data-theme="light-slate"] {
+    --bg-main: #f8fafc;
+    --card-bg: #ffffff;
+    --border-color: rgba(203, 213, 225, 0.8);
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --accent: #059669;
+    color-scheme: light;
+  }
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--bg-main, #04100c);
+  color: var(--text-primary, #f0fdf4);
+  min-height: 100vh;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.5);
+}
+
+/* Print mode optimization for official espelho de ponto */
+@media print {
+  header, nav, button, .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}
