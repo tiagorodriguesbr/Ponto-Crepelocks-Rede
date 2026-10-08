@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   FileText,
   FilePlus,
@@ -19,7 +19,8 @@ import {
   Check,
   AlertTriangle,
   Download,
-  Lock
+  Lock,
+  Paperclip
 } from 'lucide-react';
 import { UserAccount, Store, OccurrenceRecord, MedicalCertificate, OccurrenceType } from '../types';
 import { StorageService } from '../services/storage';
@@ -92,6 +93,9 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
   const [occToDelete, setOccToDelete] = useState<OccurrenceRecord | null>(null);
 
   // --- CRUD: Prontuário / Atestados ---
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [showNewCertModal, setShowNewCertModal] = useState<boolean>(false);
   const [certEmployeeId, setCertEmployeeId] = useState<string>(users[0]?.id || '');
   const [certStartDate, setCertStartDate] = useState<string>('2026-10-06');
@@ -99,8 +103,80 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
   const [certCid, setCertCid] = useState<string>('');
   const [certDoctorName, setCertDoctorName] = useState<string>('');
   const [certDoctorCrm, setCertDoctorCrm] = useState<string>('');
-  const [certFileName, setCertFileName] = useState<string>('atestado_medico.pdf');
+  const [certFileName, setCertFileName] = useState<string>('');
+  const [certFileBase64, setCertFileBase64] = useState<string>('');
+  const [certFileSizeKb, setCertFileSizeKb] = useState<number>(0);
+  const [certFileType, setCertFileType] = useState<string>('');
   const [certNotes, setCertNotes] = useState<string>('');
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCertFileName(file.name);
+    setCertFileSizeKb(Math.round(file.size / 1024) || 1);
+    setCertFileType(file.type);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCertFileBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveSelectedFile = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCertFileName('');
+    setCertFileBase64('');
+    setCertFileSizeKb(0);
+    setCertFileType('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    setCertFileName(file.name);
+    setCertFileSizeKb(Math.round(file.size / 1024) || 1);
+    setCertFileType(file.type);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCertFileBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const openNewCertModal = () => {
+    setCertEmployeeId(availableUsersForCurrentUser[0]?.id || users[0]?.id || '');
+    setCertStartDate(new Date().toISOString().split('T')[0]);
+    setCertDaysOff(1);
+    setCertCid('');
+    setCertDoctorName('');
+    setCertDoctorCrm('');
+    setCertFileName('');
+    setCertFileBase64('');
+    setCertFileSizeKb(0);
+    setCertFileType('');
+    setCertNotes('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setShowNewCertModal(true);
+  };
 
   // Editing Certificate
   const [editingCert, setEditingCert] = useState<MedicalCertificate | null>(null);
@@ -171,8 +247,9 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
       cidCode: certCid || 'Z00.0 - Exame médico geral',
       doctorName: certDoctorName || 'Dr. Médico Plantonista',
       doctorCrm: certDoctorCrm || 'CRM/SP 000.000',
-      fileName: certFileName || 'atestado_colaborador.pdf',
-      fileSizeKb: Math.floor(Math.random() * 180) + 90,
+      fileName: certFileName || 'atestado_medico.pdf',
+      fileBase64: certFileBase64 || undefined,
+      fileSizeKb: certFileSizeKb || Math.floor(Math.random() * 180) + 90,
       status: 'aprovado',
       notes: certNotes || 'Atestado conferido e arquivado em prontuário digital.',
       uploadedAt: new Date().toISOString().replace('T', ' ').slice(0, 19)
@@ -182,8 +259,13 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
     setCertCid('');
     setCertDoctorName('');
     setCertDoctorCrm('');
+    setCertFileName('');
+    setCertFileBase64('');
+    setCertFileSizeKb(0);
+    setCertFileType('');
     setCertNotes('');
-    showFeedback(`Atestado inserido no prontuário de ${emp.name}!`);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    showFeedback(`Atestado médico anexado e registrado com sucesso para ${emp.name}!`);
     onDataUpdated();
   };
 
@@ -287,10 +369,7 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
             </button>
 
             <button
-              onClick={() => {
-                setCertEmployeeId(users[0]?.id || '');
-                setShowNewCertModal(true);
-              }}
+              onClick={openNewCertModal}
               className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-all flex items-center gap-1.5 shadow hover:scale-[1.02]"
             >
               <Upload className="w-3.5 h-3.5 text-emerald-400" />
@@ -525,10 +604,7 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
 
             {canAttach && (
               <button
-                onClick={() => {
-                  setCertEmployeeId(availableUsersForCurrentUser[0]?.id || users[0]?.id || '');
-                  setShowNewCertModal(true);
-                }}
+                onClick={openNewCertModal}
                 className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-1.5 self-start sm:self-auto shadow-md"
               >
                 <Upload className="w-3.5 h-3.5" />
@@ -984,18 +1060,97 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
                 />
               </div>
 
-              {/* File upload simulator */}
+              {/* File upload real selector */}
               <div>
-                <label className="block text-zinc-400 mb-1">Arquivo do Atestado (PDF / Imagem)</label>
-                <div className="p-3 rounded-lg border border-dashed border-zinc-700 bg-zinc-950/50 text-center cursor-pointer hover:border-emerald-500 transition-colors">
-                  <Upload className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
-                  <span className="text-zinc-300 font-medium block">
-                    {certFileName}
-                  </span>
-                  <span className="text-[10px] text-zinc-500">
-                    PDF assinado e vinculado ao prontuário digital
-                  </span>
-                </div>
+                <label className="block text-zinc-400 mb-1">
+                  Arquivo do Atestado (PDF / Imagem / Comprovante Digital)
+                </label>
+                
+                {/* Hidden input element */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="application/pdf,image/png,image/jpeg,image/webp,image/jpg"
+                  className="hidden"
+                />
+
+                {!certFileName ? (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`p-4 rounded-xl border-2 border-dashed transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                      isDragging
+                        ? 'border-emerald-400 bg-emerald-950/40 text-emerald-300 scale-[1.01]'
+                        : 'border-zinc-700 bg-zinc-950/60 hover:border-emerald-500 hover:bg-zinc-900/60 text-zinc-300'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-white block">
+                        Clique aqui para selecionar o documento do seu computador
+                      </span>
+                      <span className="text-[11px] text-zinc-400">
+                        ou arraste e solte o arquivo aqui (PDF, PNG ou JPG)
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      className="mt-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-md shadow-emerald-950/40"
+                    >
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <span>Selecionar Arquivo no Computador</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl border border-emerald-500/50 bg-emerald-950/30 flex items-center justify-between gap-3 animate-in fade-in">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                        <FileCheck className="w-5 h-5" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <span className="text-xs font-bold text-white block truncate" title={certFileName}>
+                          {certFileName}
+                        </span>
+                        <div className="flex items-center gap-2 text-[11px] text-emerald-400">
+                          <span>{certFileSizeKb} KB</span>
+                          <span>•</span>
+                          <span className="uppercase">{certFileType ? certFileType.split('/')[1] : 'PDF/IMG'}</span>
+                          <span>•</span>
+                          <span className="text-emerald-300">Pronto para salvar</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors"
+                        title="Trocar arquivo"
+                      >
+                        Trocar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveSelectedFile}
+                        className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/20 transition-colors"
+                        title="Remover arquivo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
@@ -1130,6 +1285,44 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
                 </select>
               </div>
 
+              <div>
+                <label className="block text-zinc-400 mb-1">Documento Vinculado</label>
+                <input
+                  type="file"
+                  ref={editFileInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !editingCert) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setEditingCert({
+                        ...editingCert,
+                        fileName: file.name,
+                        fileSizeKb: Math.round(file.size / 1024) || 1,
+                        fileBase64: reader.result as string
+                      });
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  accept="application/pdf,image/png,image/jpeg,image/webp,image/jpg"
+                  className="hidden"
+                />
+                <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs truncate">
+                    <Paperclip className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-zinc-200 font-medium truncate">{editingCert.fileName || 'atestado.pdf'}</span>
+                    <span className="text-zinc-500 text-[10px]">({editingCert.fileSizeKb || 0} KB)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => editFileInputRef.current?.click()}
+                    className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 shrink-0"
+                  >
+                    Substituir Arquivo
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
                 <button
                   type="button"
@@ -1246,16 +1439,26 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
               {canDownload ? (
                 <button
                   onClick={() => {
-                    const blob = new Blob([`COMPROVANTE DE ATESTADO MÉDICO - CREPELOCKS\n\nColaborador: ${viewingCert.employeeName}\nInício: ${viewingCert.startDate}\nDias: ${viewingCert.daysOff}\nCID: ${viewingCert.cidCode}\nMédico: ${viewingCert.doctorName} (${viewingCert.doctorCrm})\nStatus: ${viewingCert.status}\nData de Homologação: ${viewingCert.uploadedAt}\n\nDocumento assinado digitalmente.`], { type: 'text/plain;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = viewingCert.fileName || 'atestado_medico.pdf';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    showFeedback(`Download do arquivo ${viewingCert.fileName} realizado com sucesso.`);
+                    if (viewingCert.fileBase64) {
+                      const a = document.createElement('a');
+                      a.href = viewingCert.fileBase64;
+                      a.download = viewingCert.fileName || 'atestado_medico.pdf';
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      showFeedback(`Download do arquivo ${viewingCert.fileName} realizado com sucesso.`);
+                    } else {
+                      const blob = new Blob([`COMPROVANTE DE ATESTADO MÉDICO - CREPELOCKS\n\nColaborador: ${viewingCert.employeeName}\nInício: ${viewingCert.startDate}\nDias: ${viewingCert.daysOff}\nCID: ${viewingCert.cidCode}\nMédico: ${viewingCert.doctorName} (${viewingCert.doctorCrm})\nStatus: ${viewingCert.status}\nData de Homologação: ${viewingCert.uploadedAt}\n\nDocumento assinado digitalmente.`], { type: 'text/plain;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = viewingCert.fileName || 'atestado_medico.pdf';
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      showFeedback(`Download do arquivo ${viewingCert.fileName} realizado com sucesso.`);
+                    }
                   }}
                   className="w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-950/40"
                 >
