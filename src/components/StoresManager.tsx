@@ -13,10 +13,20 @@ import {
   AlertTriangle,
   X,
   Check,
-  Eye
+  Eye,
+  FileText
 } from 'lucide-react';
 import { Store, UserAccount, PunchRecord } from '../types';
 import { StorageService } from '../services/storage';
+
+const formatCnpj = (value: string): string => {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+};
 
 interface StoresManagerProps {
   stores: Store[];
@@ -41,6 +51,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
   // New store form state
   const [storeName, setStoreName] = useState<string>('');
   const [storeCode, setStoreCode] = useState<string>('');
+  const [storeCnpj, setStoreCnpj] = useState<string>('');
   const [storeAddress, setStoreAddress] = useState<string>('');
   const [storeCity, setStoreCity] = useState<string>('São Paulo - SP');
   const [storePhone, setStorePhone] = useState<string>('');
@@ -54,6 +65,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
       id: `store-${Date.now()}`,
       name: storeName,
       code: storeCode.toUpperCase(),
+      cnpj: storeCnpj ? formatCnpj(storeCnpj) : undefined,
       address: storeAddress || 'Av. Principal, 100',
       city: storeCity || 'São Paulo - SP',
       phone: storePhone || '(11) 3000-0000',
@@ -64,6 +76,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
     setShowAddModal(false);
     setStoreName('');
     setStoreCode('');
+    setStoreCnpj('');
     setStoreAddress('');
     setStorePhone('');
     setStoreManager('');
@@ -145,9 +158,16 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                     </div>
                     <div>
                       <h3 className="font-bold text-white text-base leading-tight">{store.name}</h3>
-                      <span className="text-[11px] font-mono text-emerald-400 font-semibold">
-                        Código: {store.code}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] font-mono text-emerald-400 font-semibold">
+                          {store.code}
+                        </span>
+                        {store.cnpj && (
+                          <span className="text-[10px] font-mono text-zinc-400 bg-zinc-950/80 px-1.5 py-0.5 rounded border border-zinc-800">
+                            CNPJ: {store.cnpj}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -174,6 +194,12 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                 </div>
 
                 <div className="mt-4 space-y-1.5 text-xs text-zinc-400">
+                  {store.cnpj && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                      <span>CNPJ: <strong className="font-mono text-zinc-300">{store.cnpj}</strong></span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                     <span className="truncate">{store.address} - {store.city}</span>
@@ -255,15 +281,26 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-400 mb-1">Telefone da Loja</label>
+                  <label className="block text-zinc-400 mb-1">CNPJ da Loja (Opcional)</label>
                   <input
                     type="text"
-                    placeholder="(11) 3333-4444"
-                    value={storePhone}
-                    onChange={(e) => setStorePhone(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                    placeholder="00.000.000/0000-00"
+                    value={storeCnpj}
+                    onChange={(e) => setStoreCnpj(formatCnpj(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1">Telefone da Loja</label>
+                <input
+                  type="text"
+                  placeholder="(11) 3333-4444"
+                  value={storePhone}
+                  onChange={(e) => setStorePhone(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                />
               </div>
 
               <div>
@@ -345,22 +382,57 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 mb-1">Código da Loja</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingStore.code}
+                    onChange={(e) => setEditingStore({ ...editingStore, code: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1">CNPJ da Loja</label>
+                  <input
+                    type="text"
+                    placeholder="00.000.000/0000-00"
+                    value={editingStore.cnpj || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, cnpj: formatCnpj(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 mb-1">Telefone da Loja</label>
+                  <input
+                    type="text"
+                    placeholder="(11) 3456-7890"
+                    value={editingStore.phone || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, phone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1">Gerente Responsável</label>
+                  <input
+                    type="text"
+                    value={editingStore.managerName || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, managerName: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-zinc-400 mb-1">Endereço</label>
                 <input
                   type="text"
                   value={editingStore.address}
                   onChange={(e) => setEditingStore({ ...editingStore, address: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-zinc-400 mb-1">Gerente Responsável</label>
-                <input
-                  type="text"
-                  value={editingStore.managerName || ''}
-                  onChange={(e) => setEditingStore({ ...editingStore, managerName: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
                 />
               </div>

@@ -16,6 +16,7 @@ export interface Store {
   id: string;
   name: string;
   code: string;
+  cnpj?: string;
   address: string;
   city: string;
   active: boolean;

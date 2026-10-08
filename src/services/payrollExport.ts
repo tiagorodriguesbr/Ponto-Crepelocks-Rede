@@ -83,7 +83,7 @@ export const PayrollExportService = {
     doc.text(`EMPRESA: CREPELOCKS BRASIL ALIMENTOS LTDA`, 18, 39);
     doc.text(`UNIDADE / LOJA: ${store?.name || 'Crepelocks Sede'} (${store?.code || 'LJ-01'})`, 18, 45);
     doc.text(`ENDEREÇO: ${store?.address || 'Av. Paulista, 1000'} - ${store?.city || 'São Paulo - SP'}`, 18, 51);
-    doc.text(`CNPJ: 45.892.120/0001-83`, 18, 57);
+    doc.text(`CNPJ: ${store?.cnpj || '45.892.120/0001-83'}`, 18, 57);
 
     doc.text(`COLABORADOR(A): ${employee.name.toUpperCase()}`, 110, 39);
     doc.text(`CARGO: ${employee.positionTitle} (${employee.role.toUpperCase()})`, 110, 45);
@@ -237,6 +237,7 @@ export const PayrollExportService = {
       'CARGO',
       'LOJA_CODIGO',
       'LOJA_NOME',
+      'LOJA_CNPJ',
       'ESCALA',
       'DATA_PONTO',
       'ENTRADA',
@@ -269,6 +270,7 @@ export const PayrollExportService = {
         `"${emp?.positionTitle || ''}"`,
         store?.code || 'LJ-01',
         `"${store?.name || ''}"`,
+        store?.cnpj || '',
         emp?.scheduleType || '6x1',
         p.date,
         p.entry || '',
