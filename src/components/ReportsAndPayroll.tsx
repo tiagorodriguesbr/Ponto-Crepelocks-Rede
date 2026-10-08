@@ -10,26 +10,37 @@ import {
   CheckCircle,
   Clock,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  ShieldAlert
 } from 'lucide-react';
 import { UserAccount, PunchRecord, Store, OccurrenceRecord } from '../types';
 import { PayrollExportService } from '../services/payrollExport';
+import { canDownloadDocuments, isRestrictedToOwnStore, isGerenteLoja } from '../services/rolePermissions';
 
 interface ReportsAndPayrollProps {
   users: UserAccount[];
   punches: PunchRecord[];
   stores: Store[];
   occurrences: OccurrenceRecord[];
+  currentUser?: UserAccount;
 }
 
 export const ReportsAndPayroll: React.FC<ReportsAndPayrollProps> = ({
   users,
   punches,
   stores,
-  occurrences
+  occurrences,
+  currentUser
 }) => {
+  const isStoreRestricted = isRestrictedToOwnStore(currentUser);
+  const canDownload = canDownloadDocuments(currentUser);
+  const isManager = isGerenteLoja(currentUser);
+
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
-  const [selectedStore, setSelectedStore] = useState<string>('all');
+  const [selectedStore, setSelectedStore] = useState<string>(
+    isStoreRestricted && currentUser?.storeId ? currentUser.storeId : 'all'
+  );
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
 
   const filteredUsers = users.filter((u) => {
@@ -80,8 +91,16 @@ export const ReportsAndPayroll: React.FC<ReportsAndPayrollProps> = ({
   const totalNetworkExtraMin = userSummaries.reduce((acc, s) => acc + s.extraMin, 0);
   const totalNetworkDelayMin = userSummaries.reduce((acc, s) => acc + s.delayMin, 0);
 
+  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+
+  const showExportNotification = (msg: string) => {
+    setExportFeedback(msg);
+    setTimeout(() => setExportFeedback(null), 4000);
+  };
+
   const handleExportAllPdf = () => {
     // Export individual PDFs for all filtered employees
+    showExportNotification('Gerando espelhos de ponto oficiais em PDF...');
     filteredUsers.forEach((u) => {
       const store = stores.find((s) => s.id === u.storeId);
       PayrollExportService.exportIndividualPdf(u, punches, store, selectedMonth);
@@ -89,15 +108,36 @@ export const ReportsAndPayroll: React.FC<ReportsAndPayrollProps> = ({
   };
 
   const handleExportCsv = () => {
-    PayrollExportService.exportPayrollCsv(users, punches, stores, selectedMonth);
+    const targetUsers = filteredUsers.length > 0 ? filteredUsers : users;
+    showExportNotification(`Exportando arquivo CSV de folha (${targetUsers.length} colaboradores)...`);
+    PayrollExportService.exportPayrollCsv(targetUsers, punches, stores, selectedMonth);
+  };
+
+  const handleExportAfdp = () => {
+    const targetUsers = filteredUsers.length > 0 ? filteredUsers : users;
+    showExportNotification(`Exportando AFDP MTP 671 (${targetUsers.length} colaboradores)...`);
+    PayrollExportService.exportAfdpTxt(targetUsers, punches, selectedMonth);
   };
 
   const handleExportAfdt = () => {
-    PayrollExportService.exportAfdtTxt(users, punches, selectedMonth);
+    const targetUsers = filteredUsers.length > 0 ? filteredUsers : users;
+    showExportNotification(`Exportando AFDT MTP 671 (${targetUsers.length} colaboradores)...`);
+    PayrollExportService.exportAfdtTxt(targetUsers, punches, selectedMonth);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      {/* Toast Feedback */}
+      {exportFeedback && (
+        <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between gap-3 animate-in fade-in shadow-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="font-semibold">{exportFeedback}</span>
+          </div>
+          <span className="text-[10px] text-zinc-400">Download em andamento</span>
+        </div>
+      )}
+
       {/* Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border bg-card/60 backdrop-blur-md border-border shadow-md">
         <div>
@@ -111,31 +151,52 @@ export const ReportsAndPayroll: React.FC<ReportsAndPayrollProps> = ({
         </div>
 
         {/* Action Export Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleExportCsv}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Exportar CSV (Folha)</span>
-          </button>
+        {canDownload ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExportCsv}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow hover:scale-[1.02]"
+              title="Download CSV compatível com Totvs, Senior, ADP, Folha Fácil"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Exportar CSV (Folha)</span>
+            </button>
 
-          <button
-            onClick={handleExportAfdt}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow"
-          >
-            <FileText className="w-3.5 h-3.5 text-blue-400" />
-            <span>Exportar AFDT (MTP 671)</span>
-          </button>
+            <button
+              onClick={handleExportAfdp}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow hover:scale-[1.02]"
+              title="Arquivo Fonte de Dados de Ponto (Portaria MTP 671/2021)"
+            >
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
+              <span>Exportar AFDP (MTP 671)</span>
+            </button>
 
-          <button
-            onClick={handleExportAllPdf}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-1.5 shadow-md shadow-emerald-950/40"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Baixar Espelhos (PDF)</span>
-          </button>
-        </div>
+            <button
+              onClick={handleExportAfdt}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow hover:scale-[1.02]"
+              title="Arquivo Fonte de Dados Tratado (Portaria MTP 671/2021)"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-400" />
+              <span>Exportar AFDT (MTP 671)</span>
+            </button>
+
+            <button
+              onClick={handleExportAllPdf}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center gap-1.5 shadow-md shadow-emerald-950/40 hover:scale-[1.02]"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Baixar Espelhos (PDF)</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300">
+            <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+            <div className="text-[11px]">
+              <span className="font-semibold text-white block">Download Restrito:</span>
+              <span className="text-zinc-400">Exportação de arquivos autorizada para cargos acima de Gerente de Loja.</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* KPI Overview */}
@@ -307,21 +368,28 @@ export const ReportsAndPayroll: React.FC<ReportsAndPayrollProps> = ({
                     </td>
 
                     <td className="py-3 px-3 text-right font-sans">
-                      <button
-                        onClick={() =>
-                          PayrollExportService.exportIndividualPdf(
-                            summary.user,
-                            punches,
-                            summary.store,
-                            selectedMonth
-                          )
-                        }
-                        className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-semibold inline-flex items-center gap-1 border border-zinc-700 transition-all"
-                        title="Baixar Espelho Mensal de Ponto em PDF"
-                      >
-                        <Download className="w-3 h-3 text-emerald-400" />
-                        <span>PDF</span>
-                      </button>
+                      {canDownload ? (
+                        <button
+                          onClick={() =>
+                            PayrollExportService.exportIndividualPdf(
+                              summary.user,
+                              punches,
+                              summary.store,
+                              selectedMonth
+                            )
+                          }
+                          className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-semibold inline-flex items-center gap-1 border border-zinc-700 transition-all shadow-sm"
+                          title="Baixar Espelho Mensal de Ponto em PDF"
+                        >
+                          <Download className="w-3 h-3 text-emerald-400" />
+                          <span>PDF</span>
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-zinc-500 inline-flex items-center gap-1 bg-zinc-900/80 px-2 py-1 rounded border border-zinc-800">
+                          <Lock className="w-2.5 h-2.5 text-zinc-500" />
+                          <span>Consulta</span>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   setDoc,
+  deleteDoc,
   getDocs,
   onSnapshot,
   Unsubscribe
@@ -17,7 +18,8 @@ import {
   SystemNotification,
   ThemeStyle,
   ScheduleType,
-  PunchType
+  PunchType,
+  PayrollEmployeeConfig
 } from '../types';
 import {
   INITIAL_STORES,
@@ -26,7 +28,8 @@ import {
   INITIAL_SCHEDULES,
   INITIAL_OCCURRENCES,
   INITIAL_CERTIFICATES,
-  INITIAL_NOTIFICATIONS
+  INITIAL_NOTIFICATIONS,
+  INITIAL_PAYROLL_CONFIGS
 } from '../data/initialData';
 
 const STORAGE_KEYS = {
@@ -37,6 +40,7 @@ const STORAGE_KEYS = {
   OCCURRENCES: 'crepelocks_occurrences_v2',
   CERTIFICATES: 'crepelocks_certificates_v2',
   NOTIFICATIONS: 'crepelocks_notifications_v2',
+  PAYROLL_CONFIGS: 'crepelocks_payroll_configs_v2',
   THEME: 'crepelocks_theme_v2',
   CURRENT_USER: 'crepelocks_current_user_v2',
   CLOUD_INITIALIZED: 'crepelocks_cloud_init_v2',
@@ -123,10 +127,28 @@ export const StorageService = {
       handleFirestoreError(err, OperationType.WRITE, `stores/${updated.id}`)
     );
   },
+  deleteStore(storeId: string): void {
+    const stores = this.getStores().filter((s) => s.id !== storeId);
+    this.saveStores(stores);
+    deleteDoc(doc(db, 'stores', storeId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `stores/${storeId}`)
+    );
+  },
 
   // Users
   getUsers(): UserAccount[] {
-    return getFromStorage<UserAccount[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    const list = getFromStorage<UserAccount[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    let modified = false;
+    INITIAL_USERS.forEach((initU) => {
+      if (!list.some((u) => u.id === initU.id)) {
+        list.push(initU);
+        modified = true;
+      }
+    });
+    if (modified) {
+      saveToStorage(STORAGE_KEYS.USERS, list);
+    }
+    return list;
   },
   saveUsers(users: UserAccount[]): void {
     saveToStorage(STORAGE_KEYS.USERS, users);
@@ -150,6 +172,14 @@ export const StorageService = {
     // Sync to Firestore
     setDoc(doc(db, 'users', updated.id), updated).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `users/${updated.id}`)
+    );
+  },
+  deleteUser(userId: string): void {
+    const users = this.getUsers().filter((u) => u.id !== userId);
+    this.saveUsers(users);
+    // Sync to Firestore
+    deleteDoc(doc(db, 'users', userId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`)
     );
   },
 
@@ -270,7 +300,18 @@ export const StorageService = {
 
   // Schedules
   getSchedules(): ScheduleDay[] {
-    return getFromStorage<ScheduleDay[]>(STORAGE_KEYS.SCHEDULES, INITIAL_SCHEDULES);
+    const list = getFromStorage<ScheduleDay[]>(STORAGE_KEYS.SCHEDULES, INITIAL_SCHEDULES);
+    let modified = false;
+    INITIAL_SCHEDULES.forEach((initS) => {
+      if (!list.some((s) => s.id === initS.id)) {
+        list.push(initS);
+        modified = true;
+      }
+    });
+    if (modified) {
+      saveToStorage(STORAGE_KEYS.SCHEDULES, list);
+    }
+    return list;
   },
   saveSchedules(schedules: ScheduleDay[]): void {
     saveToStorage(STORAGE_KEYS.SCHEDULES, schedules);
@@ -294,18 +335,20 @@ export const StorageService = {
     month: number,
     shiftStart: string,
     shiftEnd: string,
-    weeklyDayOffIndex: number = 0
+    weeklyDayOffIndices: number[] = [0],
+    alternationStartWorking: boolean = true
   ): ScheduleDay[] {
     const daysInMonth = new Date(year, month, 0).getDate();
     const generated: ScheduleDay[] = [];
     const monthStr = month < 10 ? `0${month}` : `${month}`;
 
     if (scheduleType === '6x1') {
+      const offDays = weeklyDayOffIndices.length > 0 ? weeklyDayOffIndices : [0];
       for (let day = 1; day <= daysInMonth; day++) {
         const dateObj = new Date(year, month - 1, day);
         const dayOfWeek = dateObj.getDay();
         const dateStr = `${year}-${monthStr}-${day < 10 ? '0' + day : day}`;
-        const isOff = dayOfWeek === weeklyDayOffIndex;
+        const isOff = offDays.includes(dayOfWeek);
 
         generated.push({
           id: `sch-${employeeId}-${dateStr}`,
@@ -320,7 +363,7 @@ export const StorageService = {
         });
       }
     } else if (scheduleType === '12x36') {
-      let isWorking = true;
+      let isWorking = alternationStartWorking;
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${monthStr}-${day < 10 ? '0' + day : day}`;
         generated.push({
@@ -337,11 +380,13 @@ export const StorageService = {
         isWorking = !isWorking;
       }
     } else {
+      // 5x2 scale: default to Saturday (6) and Sunday (0) if not specified, or use custom days selected
+      const offDays = weeklyDayOffIndices.length > 0 ? weeklyDayOffIndices : [0, 6];
       for (let day = 1; day <= daysInMonth; day++) {
         const dateObj = new Date(year, month - 1, day);
         const dayOfWeek = dateObj.getDay();
         const dateStr = `${year}-${monthStr}-${day < 10 ? '0' + day : day}`;
-        const isOff = dayOfWeek === 0 || dayOfWeek === 6;
+        const isOff = offDays.includes(dayOfWeek);
 
         generated.push({
           id: `sch-${employeeId}-${dateStr}`,
@@ -352,7 +397,7 @@ export const StorageService = {
           isOffDay: isOff,
           isExtraDay: false,
           scheduleType: '5x2',
-          notes: isOff ? 'Folga Fim de Semana' : undefined
+          notes: isOff ? 'Descanso Semanal Remunerado (DSR 5x2)' : undefined
         });
       }
     }
@@ -431,6 +476,38 @@ export const StorageService = {
       handleFirestoreError(err, OperationType.WRITE, `punches/${punch.id}`)
     );
   },
+  updateOccurrence(updatedOcc: OccurrenceRecord): void {
+    const list = this.getOccurrences().map((o) => (o.id === updatedOcc.id ? updatedOcc : o));
+    this.saveOccurrences(list);
+
+    // Sync to Firestore
+    setDoc(doc(db, 'occurrences', updatedOcc.id), updatedOcc).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `occurrences/${updatedOcc.id}`)
+    );
+
+    // Also update associated punch record if present
+    const punches = this.getPunches();
+    const punch = punches.find((p) => p.employeeId === updatedOcc.employeeId && p.date === updatedOcc.date);
+    if (punch) {
+      punch.status = updatedOcc.type === 'folga' ? 'folga' :
+                     updatedOcc.type === 'falta_justificada' ? 'falta_justificada' :
+                     updatedOcc.type === 'falta_injustificada' ? 'falta_injustificada' :
+                     updatedOcc.type === 'dia_extra' ? 'dia_extra' : 'abono';
+      punch.notes = updatedOcc.reason;
+      this.savePunches(punches);
+      setDoc(doc(db, 'punches', punch.id), punch).catch((err) =>
+        handleFirestoreError(err, OperationType.WRITE, `punches/${punch.id}`)
+      );
+    }
+  },
+  deleteOccurrence(occId: string): void {
+    const list = this.getOccurrences().filter((o) => o.id !== occId);
+    this.saveOccurrences(list);
+
+    deleteDoc(doc(db, 'occurrences', occId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `occurrences/${occId}`)
+    );
+  },
 
   // Certificates
   getCertificates(): MedicalCertificate[] {
@@ -477,6 +554,42 @@ export const StorageService = {
       severity: 'info'
     });
   },
+  updateCertificate(updatedCert: MedicalCertificate): void {
+    const certs = this.getCertificates().map((c) => (c.id === updatedCert.id ? updatedCert : c));
+    this.saveCertificates(certs);
+
+    setDoc(doc(db, 'certificates', updatedCert.id), updatedCert).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `certificates/${updatedCert.id}`)
+    );
+
+    // Update associated occurrence if any
+    const occs = this.getOccurrences();
+    const relatedOcc = occs.find((o) => o.certificateId === updatedCert.id);
+    if (relatedOcc) {
+      relatedOcc.employeeId = updatedCert.employeeId;
+      relatedOcc.employeeName = updatedCert.employeeName;
+      relatedOcc.storeId = updatedCert.storeId;
+      relatedOcc.date = updatedCert.startDate;
+      relatedOcc.reason = `Atestado Médico (${updatedCert.daysOff} dias) - CID: ${updatedCert.cidCode || 'N/I'} - Dr(a): ${updatedCert.doctorName}`;
+      relatedOcc.attachmentName = updatedCert.fileName;
+      this.updateOccurrence(relatedOcc);
+    }
+  },
+  deleteCertificate(certId: string): void {
+    const certs = this.getCertificates().filter((c) => c.id !== certId);
+    this.saveCertificates(certs);
+
+    deleteDoc(doc(db, 'certificates', certId)).catch((err) =>
+      handleFirestoreError(err, OperationType.DELETE, `certificates/${certId}`)
+    );
+
+    // Also delete or dissociate linked occurrence if desired
+    const occs = this.getOccurrences();
+    const linkedOcc = occs.find((o) => o.certificateId === certId);
+    if (linkedOcc) {
+      this.deleteOccurrence(linkedOcc.id);
+    }
+  },
 
   // Notifications
   getNotifications(): SystemNotification[] {
@@ -512,6 +625,44 @@ export const StorageService = {
         handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`)
       );
     });
+  },
+
+  // Payroll Configurations (Folha de Pagamento, Salário Bruto, VT, VR, INSS, IRPF, Gratificações)
+  getPayrollConfigs(): PayrollEmployeeConfig[] {
+    const list = getFromStorage<PayrollEmployeeConfig[]>(STORAGE_KEYS.PAYROLL_CONFIGS, INITIAL_PAYROLL_CONFIGS);
+    let modified = false;
+    INITIAL_PAYROLL_CONFIGS.forEach((initConfig) => {
+      if (!list.some((c) => c.employeeId === initConfig.employeeId)) {
+        list.push(initConfig);
+        modified = true;
+      }
+    });
+    if (modified) {
+      saveToStorage(STORAGE_KEYS.PAYROLL_CONFIGS, list);
+    }
+    return list;
+  },
+  savePayrollConfigs(configs: PayrollEmployeeConfig[]): void {
+    saveToStorage(STORAGE_KEYS.PAYROLL_CONFIGS, configs);
+  },
+  getPayrollConfigForEmployee(employeeId: string): PayrollEmployeeConfig | undefined {
+    const list = this.getPayrollConfigs();
+    return list.find((c) => c.employeeId === employeeId);
+  },
+  updatePayrollConfig(config: PayrollEmployeeConfig): void {
+    const list = this.getPayrollConfigs();
+    const index = list.findIndex((c) => c.employeeId === config.employeeId);
+    if (index >= 0) {
+      list[index] = config;
+    } else {
+      list.push(config);
+    }
+    this.savePayrollConfigs(list);
+
+    // Sync to Firestore
+    setDoc(doc(db, 'payrollConfigs', config.employeeId), config).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `payrollConfigs/${config.employeeId}`)
+    );
   },
 
   // Real-time Cloud Synchronization
@@ -629,6 +780,23 @@ export const StorageService = {
       )
     );
 
+    // Payroll Configs listener (real-time sync of payroll settings & salaries)
+    unsubs.push(
+      onSnapshot(
+        collection(db, 'payrollConfigs'),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const list = snapshot.docs.map((d) => d.data() as PayrollEmployeeConfig);
+            this.savePayrollConfigs(list);
+            onDataChange();
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, 'payrollConfigs');
+        }
+      )
+    );
+
     return unsubs;
   },
 
@@ -640,6 +808,7 @@ export const StorageService = {
     localStorage.removeItem(STORAGE_KEYS.OCCURRENCES);
     localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
     localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
+    localStorage.removeItem(STORAGE_KEYS.PAYROLL_CONFIGS);
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     localStorage.removeItem(STORAGE_KEYS.CLOUD_INITIALIZED);
   }

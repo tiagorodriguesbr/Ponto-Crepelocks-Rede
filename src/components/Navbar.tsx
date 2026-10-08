@@ -51,11 +51,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   const baseAdminTabs = [
     { id: 'dashboard', label: 'Visão Geral' },
     { id: 'aderencia', label: 'Aderência à Escala' },
-    { id: 'escalas', label: 'Escalas (6x1 / 12x36)' },
+    { id: 'escalas', label: 'Escalas (6x1, 5x2 e 12x36)' },
     { id: 'ocorrencias', label: 'Ocorrências & Prontuário' },
+    { id: 'folha', label: '💰 Cálculo de Folha & Salários' },
     { id: 'lojas', label: 'Lojas & Unidades' },
     { id: 'colaboradores', label: 'Colaboradores & Acessos' },
-    { id: 'relatorios', label: 'Relatórios & Folha' }
+    { id: 'relatorios', label: 'Relatórios & Espelhos' }
   ];
 
   // If gerente is NOT exempt from punch clock, give them the "Bater Ponto" tab as well
@@ -67,7 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const employeeTabs = [
     { id: 'bater_ponto', label: 'Meu Ponto Eletrônico' },
     { id: 'minha_aderencia', label: 'Minha Escala & Aderência' },
-    { id: 'meu_historico', label: 'Meus Comprovantes Digitais' }
+    { id: 'atestados', label: 'Atestados' }
   ];
 
   const tabs = isEmployee ? employeeTabs : currentUser.role === 'gerente' ? managerTabs : baseAdminTabs;

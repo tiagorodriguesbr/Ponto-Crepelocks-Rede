@@ -18,6 +18,7 @@ import { OccurrencesManager } from './components/OccurrencesManager';
 import { StoresManager } from './components/StoresManager';
 import { EmployeesAndUsersManager } from './components/EmployeesAndUsersManager';
 import { ReportsAndPayroll } from './components/ReportsAndPayroll';
+import { PayrollManager } from './components/PayrollManager';
 import { EmployeePunchScreen } from './components/EmployeePunchScreen';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { LoginModal } from './components/LoginModal';
@@ -146,12 +147,16 @@ export default function App() {
             />
           </div>
         ) : currentUser.role === 'atendente' ? (
-          /* Restrito ao funcionário (Bater Ponto, Aderência e Comprovantes) */
+          /* Restrito ao funcionário (Bater Ponto, Aderência e Atestados) */
           <EmployeePunchScreen
             currentUser={currentUser}
             currentStore={currentStore}
             punches={punches}
             schedules={schedules}
+            certificates={certificates}
+            occurrences={occurrences}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
             onPunchRegistered={reloadData}
           />
         ) : (
@@ -163,6 +168,10 @@ export default function App() {
                 currentStore={currentStore || stores[0]}
                 punches={punches}
                 schedules={schedules}
+                certificates={certificates}
+                occurrences={occurrences}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
                 onPunchRegistered={reloadData}
               />
             )}
@@ -211,6 +220,16 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'folha' && (
+              <PayrollManager
+                users={users}
+                stores={stores}
+                punches={punches}
+                currentUser={currentUser}
+                onDataUpdated={reloadData}
+              />
+            )}
+
             {activeTab === 'lojas' && (
               <StoresManager
                 stores={stores}
@@ -236,6 +255,7 @@ export default function App() {
                 punches={punches}
                 stores={stores}
                 occurrences={occurrences}
+                currentUser={currentUser}
               />
             )}
           </>

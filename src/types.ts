@@ -161,3 +161,72 @@ export interface MonthlyClosureSummary {
   adherenceOverallPct: number;
   dsrDeductions: number;
 }
+
+// Configurações e Cálculos de Folha de Pagamento por Colaborador
+export interface PayrollEmployeeConfig {
+  employeeId: string;
+  monthYear?: string; // e.g. "2026-10" ou global
+  baseSalary: number; // Salário Bruto contratual / Pro-labore do dono
+  bonusGratification: number; // Gratificação de função, bonificação ou prêmio
+  insalubridadePct?: number; // % Adicional Insalubridade opcional (ex: 20% ou 0)
+  periculosidadePct?: number; // % Adicional Periculosidade opcional (ex: 30% ou 0)
+  familyAllowanceDependents?: number; // Salário família (dependentes)
+  
+  // Percentuais de Desconto (editáveis manualmente com cálculo dinâmico)
+  vtDiscountPct: number; // Vale Transporte % (padrão legal até 6%, ou 0 se dispensou)
+  vrVaDiscountPct: number; // Vale Refeição / Alimentação % (PAT até 20% ou fixo)
+  inssDiscountPct?: number | null; // Se informado manualmente, usa; se null/vazio, calcula tabela oficial CLT progressiva
+  irpfDiscountPct?: number | null; // Se informado manualmente, usa; se null/vazio, calcula tabela oficial IRPF com deduções
+  otherDiscountsAmount: number; // Outros descontos em R$ (adiantamento, farmácia, coparticipação)
+  otherDiscountsDescription?: string; // Descrição opcional dos outros descontos
+  customDeductionsPct?: number; // Outros descontos percentuais adicionais
+
+  // Ajustes manuais diretos
+  manualInssOverride?: number | null; // R$ direto se desejar fixar
+  manualIrpfOverride?: number | null; // R$ direto se desejar fixar
+  manualVtOverride?: number | null; // R$ direto se desejar fixar
+  manualVrVaOverride?: number | null; // R$ direto se desejar fixar
+
+  // Adicionais automáticos calculados do ponto
+  includePunchesExtras?: boolean; // Incorporar horas extras apuradas do ponto
+  includeDelaysDiscount?: boolean; // Descontar atrasos/faltas injustificadas apurados do ponto
+  
+  notes?: string;
+  updatedAt: string;
+}
+
+export interface PayrollCalculationResult {
+  employeeId: string;
+  employeeName: string;
+  positionTitle: string;
+  role: Role;
+  storeName: string;
+  monthYear: string;
+  
+  // Proventos / Vencimentos
+  baseSalary: number;
+  bonusGratification: number;
+  extraHoursPay: number; // Valor das horas extras
+  extraHoursCount: number; // Quantidade de horas extras
+  insalubridadePay: number;
+  familyAllowancePay: number;
+  totalGross: number; // Total Bruto (Salário + Gratificação + Extras)
+
+  // Descontos
+  inssDiscount: number;
+  inssEffectivePct: number;
+  irpfDiscount: number;
+  irpfEffectivePct: number;
+  vtDiscount: number;
+  vtEffectivePct: number;
+  vrVaDiscount: number;
+  vrVaEffectivePct: number;
+  unjustifiedAbsencesDiscount: number; // Desconto de faltas/atrasos
+  otherDiscounts: number;
+  totalDiscounts: number;
+
+  // Resultado
+  netSalary: number; // Salário Líquido (A Receber)
+  fgtsEmployer: number; // FGTS patronal informativo (8% CLT)
+}
+

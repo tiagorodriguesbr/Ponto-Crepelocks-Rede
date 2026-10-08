@@ -8,6 +8,26 @@ export interface PayrollExportOptions {
   cnpj: string;
 }
 
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => {
+    try {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore
+    }
+  }, 1000);
+}
+
 export const PayrollExportService = {
   // Generate and download a formatted PDF "Espelho de Ponto"
   exportIndividualPdf(
@@ -234,46 +254,97 @@ export const PayrollExportService = {
 
     const rows: string[] = [headers.join(';')];
 
-    punches
-      .filter((p) => p.date.startsWith(monthYear))
-      .forEach((p) => {
-        const emp = users.find((u) => u.id === p.employeeId);
-        const store = stores.find((s) => s.id === emp?.storeId);
+    const userIds = new Set(users.map((u) => u.id));
+    const targetPunches = punches.filter((p) => p.date.startsWith(monthYear) && userIds.has(p.employeeId));
 
-        const row = [
-          emp?.id || p.employeeId,
-          `"${emp?.name || 'Desconhecido'}"`,
-          emp?.cpf || '',
-          `"${emp?.positionTitle || ''}"`,
-          store?.code || 'LJ-01',
-          `"${store?.name || ''}"`,
-          emp?.scheduleType || '6x1',
-          p.date,
-          p.entry || '',
-          p.lunchStart || '',
-          p.lunchEnd || '',
-          p.exit || '',
-          p.workedMinutes,
-          p.expectedMinutes,
-          p.delayMinutes,
-          p.extraMinutes,
-          p.status,
-          `${p.adherencePercentage}%`,
-          p.hashReceipt || ''
-        ];
-        rows.push(row.join(';'));
-      });
+    // If there are punches for the selected users, include them
+    targetPunches.forEach((p) => {
+      const emp = users.find((u) => u.id === p.employeeId);
+      const store = stores.find((s) => s.id === emp?.storeId);
+
+      const row = [
+        emp?.id || p.employeeId,
+        `"${emp?.name || 'Desconhecido'}"`,
+        emp?.cpf || '',
+        `"${emp?.positionTitle || ''}"`,
+        store?.code || 'LJ-01',
+        `"${store?.name || ''}"`,
+        emp?.scheduleType || '6x1',
+        p.date,
+        p.entry || '',
+        p.lunchStart || '',
+        p.lunchEnd || '',
+        p.exit || '',
+        p.workedMinutes,
+        p.expectedMinutes,
+        p.delayMinutes,
+        p.extraMinutes,
+        p.status,
+        `${p.adherencePercentage}%`,
+        p.hashReceipt || ''
+      ];
+      rows.push(row.join(';'));
+    });
 
     const csvContent = '\uFEFF' + rows.join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `folha_pagamento_crepelocks_${monthYear}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    triggerBrowserDownload(blob, `folha_pagamento_crepelocks_${monthYear}.csv`);
+  },
+
+  // Export AFDP (Arquivo Fonte de Dados de Ponto - Portaria MTP 671 / MTP)
+  exportAfdpTxt(
+    users: UserAccount[],
+    punches: PunchRecord[],
+    monthYear: string = '2026-10'
+  ) {
+    const lines: string[] = [];
+    const dateFormatted = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const timeFormatted = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+
+    // Registro Tipo 1: Cabeçalho do AFDP (Portaria 671/2021)
+    lines.push(
+      `0000000001145892120000183CREPELOCKS BRASIL ALIMENTOS LTDA` +
+      `${dateFormatted}${timeFormatted}${monthYear.replace('-', '')}`
+    );
+
+    let nsr = 1;
+    const userIds = new Set(users.map((u) => u.id));
+    const sortedPunches = [...punches]
+      .filter((p) => p.date.startsWith(monthYear) && userIds.has(p.employeeId))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    sortedPunches.forEach((p) => {
+      const emp = users.find((u) => u.id === p.employeeId);
+      const cpfRaw = (emp?.cpf || '00000000000').replace(/\D/g, '').padStart(11, '0');
+      const dt = p.date.replace(/-/g, '');
+      const hashShort = (p.hashReceipt || 'SHA256:E01F82C9').slice(0, 16);
+
+      // Marcações
+      const markings: { time: string | null; code: string }[] = [
+        { time: p.entry, code: 'E1' },
+        { time: p.lunchStart, code: 'S1' },
+        { time: p.lunchEnd, code: 'E2' },
+        { time: p.exit, code: 'S2' }
+      ];
+
+      markings.forEach((m) => {
+        if (m.time) {
+          const tm = m.time.replace(/:/g, '').slice(0, 4);
+          lines.push(
+            `${nsr.toString().padStart(9, '0')}2${dt}${tm}${cpfRaw}${m.code}${hashShort}`
+          );
+          nsr++;
+        }
+      });
+    });
+
+    // Registro Tipo 9: Trailer (Final do Arquivo AFDP)
+    lines.push(
+      `${nsr.toString().padStart(9, '0')}9TOTAL_REGISTROS_${(nsr - 1).toString().padStart(6, '0')}_PORTARIA_MTP_671`
+    );
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8;' });
+    triggerBrowserDownload(blob, `AFDP_MTP671_CREPELOCKS_${monthYear}.txt`);
   },
 
   // Export AFDT (Arquivo Fonte de Dados Tratado) format (Portaria MTP 671)
@@ -286,12 +357,12 @@ export const PayrollExportService = {
     const dateFormatted = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const timeFormatted = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
 
-    // Header record (Registro Tipo 1 - Cabeçalho do AFDT)
     lines.push(`00000000011CREPELOCKS BRASIL ALIMENTOS LTDA45892120000183${dateFormatted}${timeFormatted}`);
 
     let seq = 2;
+    const userIds = new Set(users.map((u) => u.id));
     punches
-      .filter((p) => p.date.startsWith(monthYear))
+      .filter((p) => p.date.startsWith(monthYear) && userIds.has(p.employeeId))
       .forEach((p) => {
         const emp = users.find((u) => u.id === p.employeeId);
         const cpfRaw = (emp?.cpf || '00000000000').replace(/\D/g, '').padStart(11, '0');
@@ -319,17 +390,9 @@ export const PayrollExportService = {
         }
       });
 
-    // Trailer
     lines.push(`${seq.toString().padStart(9, '0')}9CREPELOCKS_PORTARIA_671_FIM`);
 
     const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `AFDT_CREPELOCKS_${monthYear}.txt`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    triggerBrowserDownload(blob, `AFDT_CREPELOCKS_${monthYear}.txt`);
   }
 };

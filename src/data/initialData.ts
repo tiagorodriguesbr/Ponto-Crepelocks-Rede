@@ -1,4 +1,4 @@
-import { Store, UserAccount, PunchRecord, ScheduleDay, MedicalCertificate, OccurrenceRecord, SystemNotification } from '../types';
+import { Store, UserAccount, PunchRecord, ScheduleDay, MedicalCertificate, OccurrenceRecord, SystemNotification, PayrollEmployeeConfig } from '../types';
 
 export const INITIAL_STORES: Store[] = [
   {
@@ -36,13 +36,13 @@ export const INITIAL_STORES: Store[] = [
 export const INITIAL_USERS: UserAccount[] = [
   {
     id: 'user-admin',
-    name: 'Tiago Rodrigues (Diretoria Crepelocks)',
+    name: 'Tiago Rodrigues',
     email: 'admin@admin.com',
     passwordHash: '123456',
     role: 'dono',
     storeId: 'all',
     hasAccessToAllStores: true,
-    positionTitle: 'Diretor / Sócio Proprietário',
+    positionTitle: 'Diretor Executivo',
     cpf: '123.456.789-00',
     phone: '(11) 98765-4321',
     admissionDate: '2023-01-10',
@@ -53,7 +53,7 @@ export const INITIAL_USERS: UserAccount[] = [
     active: true,
     mfaEnabled: false,
     exemptFromPunchClock: true,
-    avatarColor: 'from-emerald-500 to-teal-700',
+    avatarColor: 'from-amber-500 to-orange-600',
     permissions: {
       canEditSchedules: true,
       canApproveOccurrences: true,
@@ -62,6 +62,306 @@ export const INITIAL_USERS: UserAccount[] = [
       canUploadCertificates: true,
       canExportPayroll: true,
       canEditStores: true
+    }
+  },
+  {
+    id: 'user-marcos',
+    name: 'Marcos Andrade',
+    email: 'marcos.financeiro@crepelocks.com',
+    passwordHash: '123456',
+    role: 'dono',
+    storeId: 'all',
+    hasAccessToAllStores: true,
+    positionTitle: 'Diretor Financeiro',
+    cpf: '234.567.890-11',
+    phone: '(11) 98111-2233',
+    admissionDate: '2023-03-15',
+    scheduleType: '5x2',
+    defaultShiftStart: '09:00',
+    defaultShiftEnd: '18:00',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: true,
+    avatarColor: 'from-amber-600 to-yellow-600',
+    permissions: {
+      canEditSchedules: true,
+      canApproveOccurrences: true,
+      canManageEmployees: true,
+      canViewFinancialReports: true,
+      canUploadCertificates: true,
+      canExportPayroll: true,
+      canEditStores: true
+    }
+  },
+  {
+    id: 'user-fernando',
+    name: 'Fernando Rocha',
+    email: 'fernando.operacoes@crepelocks.com',
+    passwordHash: '123456',
+    role: 'dono',
+    storeId: 'all',
+    hasAccessToAllStores: true,
+    positionTitle: 'Diretor Operacional',
+    cpf: '345.678.901-22',
+    phone: '(11) 98222-3344',
+    admissionDate: '2023-04-01',
+    scheduleType: '5x2',
+    defaultShiftStart: '08:00',
+    defaultShiftEnd: '17:00',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: true,
+    avatarColor: 'from-orange-500 to-amber-700',
+    permissions: {
+      canEditSchedules: true,
+      canApproveOccurrences: true,
+      canManageEmployees: true,
+      canViewFinancialReports: true,
+      canUploadCertificates: true,
+      canExportPayroll: true,
+      canEditStores: true
+    }
+  },
+  {
+    id: 'user-carlos',
+    name: 'Carlos Silveira',
+    email: 'gerente@crepelocks.com',
+    passwordHash: '123456',
+    role: 'gerente',
+    storeId: 'store-1',
+    hasAccessToAllStores: false,
+    positionTitle: 'Gerente de Loja',
+    cpf: '456.789.012-33',
+    phone: '(11) 98333-4455',
+    admissionDate: '2023-06-10',
+    scheduleType: '6x1',
+    defaultShiftStart: '08:00',
+    defaultShiftEnd: '16:20',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: false,
+    avatarColor: 'from-emerald-500 to-teal-700',
+    permissions: {
+      canEditSchedules: true,
+      canApproveOccurrences: true,
+      canManageEmployees: false,
+      canViewFinancialReports: true,
+      canUploadCertificates: true,
+      canExportPayroll: true,
+      canEditStores: false
+    }
+  },
+  {
+    id: 'user-juliana',
+    name: 'Juliana Mendes',
+    email: 'juliana.vendas@crepelocks.com',
+    passwordHash: '123456',
+    role: 'gerente',
+    storeId: 'all',
+    hasAccessToAllStores: true,
+    positionTitle: 'Gerente de Vendas',
+    cpf: '567.890.123-44',
+    phone: '(11) 98444-5566',
+    admissionDate: '2023-08-20',
+    scheduleType: '6x1',
+    defaultShiftStart: '09:00',
+    defaultShiftEnd: '17:20',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: false,
+    avatarColor: 'from-teal-600 to-cyan-700',
+    permissions: {
+      canEditSchedules: true,
+      canApproveOccurrences: true,
+      canManageEmployees: false,
+      canViewFinancialReports: true,
+      canUploadCertificates: true,
+      canExportPayroll: true,
+      canEditStores: false
+    }
+  },
+  {
+    id: 'user-rafael',
+    name: 'Rafael Souza',
+    email: 'rafael.marketing@crepelocks.com',
+    passwordHash: '123456',
+    role: 'gerente',
+    storeId: 'all',
+    hasAccessToAllStores: true,
+    positionTitle: 'Gerente de Marketing',
+    cpf: '678.901.234-55',
+    phone: '(11) 98555-6677',
+    admissionDate: '2023-09-01',
+    scheduleType: '5x2',
+    defaultShiftStart: '09:00',
+    defaultShiftEnd: '18:00',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: true,
+    avatarColor: 'from-purple-500 to-indigo-600',
+    permissions: {
+      canEditSchedules: false,
+      canApproveOccurrences: false,
+      canManageEmployees: false,
+      canViewFinancialReports: true,
+      canUploadCertificates: false,
+      canExportPayroll: true,
+      canEditStores: false
+    }
+  },
+  {
+    id: 'user-camila',
+    name: 'Camila Duarte',
+    email: 'camila.admin@crepelocks.com',
+    passwordHash: '123456',
+    role: 'atendente',
+    storeId: 'store-1',
+    hasAccessToAllStores: false,
+    positionTitle: 'Auxiliar Administrativo',
+    cpf: '789.012.345-66',
+    phone: '(11) 98666-7788',
+    admissionDate: '2024-01-15',
+    scheduleType: '5x2',
+    defaultShiftStart: '08:00',
+    defaultShiftEnd: '17:48',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: false,
+    avatarColor: 'from-blue-500 to-indigo-700',
+    permissions: {
+      canEditSchedules: false,
+      canApproveOccurrences: false,
+      canManageEmployees: false,
+      canViewFinancialReports: false,
+      canUploadCertificates: true,
+      canExportPayroll: false,
+      canEditStores: false
+    }
+  },
+  {
+    id: 'user-maria',
+    name: 'Maria Oliveira',
+    email: 'maria@crepelocks.com',
+    passwordHash: '123456',
+    role: 'atendente',
+    storeId: 'store-1',
+    hasAccessToAllStores: false,
+    positionTitle: 'Atendente',
+    cpf: '890.123.456-77',
+    phone: '(11) 98777-8899',
+    admissionDate: '2024-02-01',
+    scheduleType: '6x1',
+    defaultShiftStart: '08:00',
+    defaultShiftEnd: '16:20',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: false,
+    avatarColor: 'from-rose-500 to-pink-600',
+    permissions: {
+      canEditSchedules: false,
+      canApproveOccurrences: false,
+      canManageEmployees: false,
+      canViewFinancialReports: false,
+      canUploadCertificates: false,
+      canExportPayroll: false,
+      canEditStores: false
+    }
+  },
+  {
+    id: 'user-lucas',
+    name: 'Lucas Ferreira',
+    email: 'lucas@crepelocks.com',
+    passwordHash: '123456',
+    role: 'gerente',
+    storeId: 'store-2',
+    hasAccessToAllStores: false,
+    positionTitle: 'Gerente de Loja',
+    cpf: '901.234.567-88',
+    phone: '(11) 98888-9900',
+    admissionDate: '2023-11-10',
+    scheduleType: '12x36',
+    defaultShiftStart: '10:00',
+    defaultShiftEnd: '22:00',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: false,
+    avatarColor: 'from-emerald-600 to-green-700',
+    permissions: {
+      canEditSchedules: true,
+      canApproveOccurrences: true,
+      canManageEmployees: false,
+      canViewFinancialReports: true,
+      canUploadCertificates: true,
+      canExportPayroll: true,
+      canEditStores: false
+    }
+  },
+  {
+    id: 'user-beatriz',
+    name: 'Beatriz Santos',
+    email: 'beatriz@crepelocks.com',
+    passwordHash: '123456',
+    role: 'atendente',
+    storeId: 'store-3',
+    hasAccessToAllStores: false,
+    positionTitle: 'Atendente',
+    cpf: '012.345.678-99',
+    phone: '(11) 98999-0011',
+    admissionDate: '2024-03-20',
+    scheduleType: '6x1',
+    defaultShiftStart: '14:00',
+    defaultShiftEnd: '22:20',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: false,
+    avatarColor: 'from-violet-500 to-purple-600',
+    permissions: {
+      canEditSchedules: false,
+      canApproveOccurrences: false,
+      canManageEmployees: false,
+      canViewFinancialReports: false,
+      canUploadCertificates: false,
+      canExportPayroll: false,
+      canEditStores: false
+    }
+  },
+  {
+    id: 'user-gabriel',
+    name: 'Gabriel Martins',
+    email: 'gabriel@crepelocks.com',
+    passwordHash: '123456',
+    role: 'atendente',
+    storeId: 'store-1',
+    hasAccessToAllStores: false,
+    positionTitle: 'Atendente',
+    cpf: '123.234.345-00',
+    phone: '(11) 98000-1122',
+    admissionDate: '2024-04-10',
+    scheduleType: '12x36',
+    defaultShiftStart: '10:00',
+    defaultShiftEnd: '22:00',
+    lunchDurationMin: 60,
+    active: true,
+    mfaEnabled: false,
+    exemptFromPunchClock: false,
+    avatarColor: 'from-blue-600 to-sky-700',
+    permissions: {
+      canEditSchedules: false,
+      canApproveOccurrences: false,
+      canManageEmployees: false,
+      canViewFinancialReports: false,
+      canUploadCertificates: false,
+      canExportPayroll: false,
+      canEditStores: false
     }
   }
 ];
@@ -266,33 +566,119 @@ export const INITIAL_PUNCHES: PunchRecord[] = [
   }
 ];
 
-export const INITIAL_SCHEDULES: ScheduleDay[] = [
-  // Generate sample days for October 2026 for Maria (6x1)
-  { id: 'sch-m-1', employeeId: 'user-maria', date: '2026-10-01', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' },
-  { id: 'sch-m-2', employeeId: 'user-maria', date: '2026-10-02', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: true, isExtraDay: false, scheduleType: '6x1', notes: 'Folga DSR' },
-  { id: 'sch-m-3', employeeId: 'user-maria', date: '2026-10-03', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' },
-  { id: 'sch-m-4', employeeId: 'user-maria', date: '2026-10-04', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' },
-  { id: 'sch-m-5', employeeId: 'user-maria', date: '2026-10-05', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' },
-  { id: 'sch-m-6', employeeId: 'user-maria', date: '2026-10-06', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' },
-  { id: 'sch-m-7', employeeId: 'user-maria', date: '2026-10-07', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' },
-  { id: 'sch-m-8', employeeId: 'user-maria', date: '2026-10-08', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' },
-  { id: 'sch-m-9', employeeId: 'user-maria', date: '2026-10-09', shiftStart: '08:00', shiftEnd: '16:20', isOffDay: true, isExtraDay: false, scheduleType: '6x1', notes: 'Folga DSR' },
+const generateFullMonthSchedules = (): ScheduleDay[] => {
+  const schedules: ScheduleDay[] = [];
+  const daysInOct = 31;
 
-  // Lucas Ferreira (12x36)
-  { id: 'sch-l-1', employeeId: 'user-lucas', date: '2026-10-01', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: true, isExtraDay: false, scheduleType: '12x36' },
-  { id: 'sch-l-2', employeeId: 'user-lucas', date: '2026-10-02', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: false, isExtraDay: false, scheduleType: '12x36' },
-  { id: 'sch-l-3', employeeId: 'user-lucas', date: '2026-10-03', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: true, isExtraDay: false, scheduleType: '12x36' },
-  { id: 'sch-l-4', employeeId: 'user-lucas', date: '2026-10-04', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: false, isExtraDay: false, scheduleType: '12x36' },
-  { id: 'sch-l-5', employeeId: 'user-lucas', date: '2026-10-05', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: true, isExtraDay: false, scheduleType: '12x36' },
-  { id: 'sch-l-6', employeeId: 'user-lucas', date: '2026-10-06', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: false, isExtraDay: false, scheduleType: '12x36' },
-  { id: 'sch-l-7', employeeId: 'user-lucas', date: '2026-10-07', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: true, isExtraDay: false, scheduleType: '12x36' },
+  for (let d = 1; d <= daysInOct; d++) {
+    const dayStr = d < 10 ? `0${d}` : `${d}`;
+    const dateStr = `2026-10-${dayStr}`;
+    const dateObj = new Date(2026, 9, d); // October 2026
+    const dayOfWeek = dateObj.getDay(); // 0 = Dom, 5 = Sex, 6 = Sáb
 
-  // Gabriel Martins (12x36)
-  { id: 'sch-g-6', employeeId: 'user-gabriel', date: '2026-10-06', shiftStart: '10:00', shiftEnd: '22:00', isOffDay: false, isExtraDay: false, scheduleType: '12x36' },
+    // 1. Maria Oliveira (6x1, 08:00 - 16:20, Folga DSR às sextas / ciclo)
+    const mariaOff = d === 2 || d === 9 || d === 16 || d === 23 || d === 30;
+    schedules.push({
+      id: `sch-m-${d}`,
+      employeeId: 'user-maria',
+      date: dateStr,
+      shiftStart: '08:00',
+      shiftEnd: '16:20',
+      isOffDay: mariaOff,
+      isExtraDay: false,
+      scheduleType: '6x1',
+      notes: mariaOff ? 'Folga DSR (Escala 6x1)' : undefined
+    });
 
-  // Beatriz Santos (6x1)
-  { id: 'sch-b-6', employeeId: 'user-beatriz', date: '2026-10-06', shiftStart: '14:00', shiftEnd: '22:20', isOffDay: false, isExtraDay: false, scheduleType: '6x1' }
-];
+    // 2. Lucas Ferreira (12x36, 10:00 - 22:00, dias pares trabalham, dias ímpares folga)
+    const lucasOff = d % 2 !== 0;
+    schedules.push({
+      id: `sch-l-${d}`,
+      employeeId: 'user-lucas',
+      date: dateStr,
+      shiftStart: '10:00',
+      shiftEnd: '22:00',
+      isOffDay: lucasOff,
+      isExtraDay: false,
+      scheduleType: '12x36',
+      notes: lucasOff ? 'Folga 36h (Plantão 12x36)' : 'Plantão 12h'
+    });
+
+    // 3. Gabriel Martins (12x36, 10:00 - 22:00, dias ímpares trabalham, dias pares folga)
+    const gabrielOff = d % 2 === 0;
+    schedules.push({
+      id: `sch-g-${d}`,
+      employeeId: 'user-gabriel',
+      date: dateStr,
+      shiftStart: '10:00',
+      shiftEnd: '22:00',
+      isOffDay: gabrielOff,
+      isExtraDay: false,
+      scheduleType: '12x36',
+      notes: gabrielOff ? 'Folga 36h (Plantão 12x36)' : 'Plantão 12h'
+    });
+
+    // 4. Beatriz Santos (6x1, 14:00 - 22:20, Folga DSR aos domingos)
+    const beatrizOff = dayOfWeek === 0;
+    schedules.push({
+      id: `sch-b-${d}`,
+      employeeId: 'user-beatriz',
+      date: dateStr,
+      shiftStart: '14:00',
+      shiftEnd: '22:20',
+      isOffDay: beatrizOff,
+      isExtraDay: false,
+      scheduleType: '6x1',
+      notes: beatrizOff ? 'Folga DSR Domingo (Escala 6x1)' : undefined
+    });
+
+    // 5. Carlos Silveira (Gerente de Loja, 6x1, 08:00 - 16:20, DSR aos domingos)
+    const carlosOff = dayOfWeek === 0;
+    schedules.push({
+      id: `sch-carlos-${d}`,
+      employeeId: 'user-carlos',
+      date: dateStr,
+      shiftStart: '08:00',
+      shiftEnd: '16:20',
+      isOffDay: carlosOff,
+      isExtraDay: false,
+      scheduleType: '6x1',
+      notes: carlosOff ? 'Folga DSR Gerência' : undefined
+    });
+
+    // 6. Camila Duarte (Auxiliar Administrativo, 5x2, 08:00 - 17:48, Folga Sábado e Domingo)
+    const camilaOff = dayOfWeek === 0 || dayOfWeek === 6;
+    schedules.push({
+      id: `sch-c-${d}`,
+      employeeId: 'user-camila',
+      date: dateStr,
+      shiftStart: '08:00',
+      shiftEnd: '17:48',
+      isOffDay: camilaOff,
+      isExtraDay: false,
+      scheduleType: '5x2',
+      notes: camilaOff ? (dayOfWeek === 6 ? 'Folga Sábado (DSR 5x2)' : 'Folga Domingo (DSR 5x2)') : undefined
+    });
+
+    // 7. Rafael Souza (Gerente de Marketing, 5x2, 09:00 - 18:00, Folga Sábado e Domingo)
+    const rafaelOff = dayOfWeek === 0 || dayOfWeek === 6;
+    schedules.push({
+      id: `sch-r-${d}`,
+      employeeId: 'user-rafael',
+      date: dateStr,
+      shiftStart: '09:00',
+      shiftEnd: '18:00',
+      isOffDay: rafaelOff,
+      isExtraDay: false,
+      scheduleType: '5x2',
+      notes: rafaelOff ? (dayOfWeek === 6 ? 'Folga Sábado (DSR 5x2)' : 'Folga Domingo (DSR 5x2)') : undefined
+    });
+  }
+
+  return schedules;
+};
+
+export const INITIAL_SCHEDULES: ScheduleDay[] = generateFullMonthSchedules();
 
 export const INITIAL_OCCURRENCES: OccurrenceRecord[] = [
   {
@@ -376,6 +762,38 @@ export const INITIAL_CERTIFICATES: MedicalCertificate[] = [
     status: 'aprovado',
     notes: 'Afastamento de 2 dias deferido conforme CLT.',
     uploadedAt: '2026-09-15 09:12:00'
+  },
+  {
+    id: 'cert-3',
+    employeeId: 'user-lucas',
+    employeeName: 'Lucas Ferreira',
+    storeId: 'store-2',
+    startDate: '2026-10-03',
+    daysOff: 1,
+    cidCode: 'Z00.0 - Exame médico de rotina',
+    doctorName: 'Dr. Roberto Silveira',
+    doctorCrm: 'CRM-SP 189.201',
+    fileName: 'atestado_lucas_consulta.pdf',
+    fileSizeKb: 135,
+    status: 'aprovado',
+    notes: 'Declaração de comparecimento homologada para abono de horas.',
+    uploadedAt: '2026-10-03 16:15:00'
+  },
+  {
+    id: 'cert-4',
+    employeeId: 'user-gabriel',
+    employeeName: 'Gabriel Martins',
+    storeId: 'store-1',
+    startDate: '2026-09-20',
+    daysOff: 1,
+    cidCode: 'M54.5 - Dor lombar baixa',
+    doctorName: 'Dra. Patricia Lima',
+    doctorCrm: 'CRM-SP 165.412',
+    fileName: 'atestado_gabriel_ortopedia.pdf',
+    fileSizeKb: 160,
+    status: 'aprovado',
+    notes: 'Atestado ortopédico apresentado e arquivado no prontuário.',
+    uploadedAt: '2026-09-20 11:45:00'
   }
 ];
 
@@ -420,3 +838,166 @@ export const INITIAL_NOTIFICATIONS: SystemNotification[] = [
     severity: 'info'
   }
 ];
+
+export const INITIAL_PAYROLL_CONFIGS: PayrollEmployeeConfig[] = [
+  {
+    employeeId: 'user-admin', // Tiago Rodrigues (Dono / Diretor Executivo)
+    baseSalary: 12500.00, // Pró-labore
+    bonusGratification: 2500.00,
+    vtDiscountPct: 0, // Dono não desconta VT
+    vrVaDiscountPct: 0,
+    inssDiscountPct: null, // Cálculo automático ou teto
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 0,
+    otherDiscountsDescription: '',
+    familyAllowanceDependents: 1,
+    includePunchesExtras: false,
+    includeDelaysDiscount: false,
+    notes: 'Pró-labore de Diretor Executivo',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-marcos', // Marcos Andrade (Diretor Financeiro)
+    baseSalary: 9500.00,
+    bonusGratification: 1500.00,
+    vtDiscountPct: 0,
+    vrVaDiscountPct: 0,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 0,
+    otherDiscountsDescription: '',
+    familyAllowanceDependents: 0,
+    includePunchesExtras: false,
+    includeDelaysDiscount: false,
+    notes: 'Pró-labore de Diretor Financeiro',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-fernando', // Fernando Rocha (Diretor Operacional)
+    baseSalary: 9500.00,
+    bonusGratification: 1500.00,
+    vtDiscountPct: 0,
+    vrVaDiscountPct: 0,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 0,
+    otherDiscountsDescription: '',
+    familyAllowanceDependents: 2,
+    includePunchesExtras: false,
+    includeDelaysDiscount: false,
+    notes: 'Pró-labore de Diretor Operacional',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-carlos', // Carlos Silveira (Gerente de Loja)
+    baseSalary: 4200.00,
+    bonusGratification: 800.00,
+    vtDiscountPct: 6,
+    vrVaDiscountPct: 5,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 120.00,
+    otherDiscountsDescription: 'Plano Odontológico',
+    familyAllowanceDependents: 1,
+    includePunchesExtras: true,
+    includeDelaysDiscount: true,
+    notes: 'Gratificação por atingimento de meta de vendas',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-juliana', // Juliana Mendes (Gerente de Vendas)
+    baseSalary: 4500.00,
+    bonusGratification: 1200.00,
+    vtDiscountPct: 6,
+    vrVaDiscountPct: 5,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 0,
+    familyAllowanceDependents: 0,
+    includePunchesExtras: true,
+    includeDelaysDiscount: true,
+    notes: 'Comissão e gratificação de gestão comercial',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-rafael', // Rafael Souza (Gerente de Marketing)
+    baseSalary: 4800.00,
+    bonusGratification: 600.00,
+    vtDiscountPct: 0,
+    vrVaDiscountPct: 5,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 0,
+    familyAllowanceDependents: 0,
+    includePunchesExtras: false,
+    includeDelaysDiscount: false,
+    notes: 'Home-office híbrido (sem desconto de VT)',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-camila', // Camila Duarte (Auxiliar Administrativo)
+    baseSalary: 2350.00,
+    bonusGratification: 250.00,
+    vtDiscountPct: 6,
+    vrVaDiscountPct: 4,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 45.00,
+    otherDiscountsDescription: 'Seguro de Vida',
+    familyAllowanceDependents: 1,
+    includePunchesExtras: true,
+    includeDelaysDiscount: true,
+    notes: '',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-maria', // Maria Oliveira (Atendente)
+    baseSalary: 1980.00,
+    bonusGratification: 300.00,
+    insalubridadePct: 20, // 20% insalubridade (chapa quente / cozinha)
+    vtDiscountPct: 6,
+    vrVaDiscountPct: 5,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 0,
+    familyAllowanceDependents: 2,
+    includePunchesExtras: true,
+    includeDelaysDiscount: true,
+    notes: 'Adicional de insalubridade de cozinha de crepes',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-lucas', // Lucas Gabriel (Atendente)
+    baseSalary: 1980.00,
+    bonusGratification: 200.00,
+    insalubridadePct: 20,
+    vtDiscountPct: 6,
+    vrVaDiscountPct: 5,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 50.00,
+    otherDiscountsDescription: 'Vale Farmácia',
+    familyAllowanceDependents: 0,
+    includePunchesExtras: true,
+    includeDelaysDiscount: true,
+    notes: '',
+    updatedAt: '2026-10-01'
+  },
+  {
+    employeeId: 'user-beatriz', // Beatriz Santos (Atendente)
+    baseSalary: 1980.00,
+    bonusGratification: 150.00,
+    insalubridadePct: 20,
+    vtDiscountPct: 6,
+    vrVaDiscountPct: 5,
+    inssDiscountPct: null,
+    irpfDiscountPct: null,
+    otherDiscountsAmount: 0,
+    familyAllowanceDependents: 0,
+    includePunchesExtras: true,
+    includeDelaysDiscount: true,
+    notes: '',
+    updatedAt: '2026-10-01'
+  }
+];
+

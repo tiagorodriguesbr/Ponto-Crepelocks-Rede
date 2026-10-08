@@ -82,12 +82,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="flex items-center gap-2.5">
             <Eye className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
-              <span className="font-bold text-amber-300 block">Modo Acompanhamento (Perfil Gerente)</span>
-              <span>Acesso aos painéis de monitoramento em tempo real igual ao Dono. Sem permissão de modificação de dados.</span>
+              <span className="font-bold text-amber-300 block">
+                {currentUser.permissions?.canManageEmployees || currentUser.permissions?.canEditSchedules
+                  ? 'Painel Gerencial (Acesso com Gestão Autorizada)'
+                  : 'Modo Acompanhamento (Perfil Gerente)'}
+              </span>
+              <span>
+                {currentUser.permissions?.canManageEmployees || currentUser.permissions?.canEditSchedules
+                  ? 'Acesso aos painéis operacionais com permissões específicas concedidas pela diretoria.'
+                  : 'Acesso aos painéis de monitoramento em tempo real igual ao Dono. Sem permissão de modificação de dados.'}
+              </span>
             </div>
           </div>
           <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-[10px] uppercase tracking-wider shrink-0 self-start sm:self-center">
-            Somente Consulta
+            {currentUser.permissions?.canManageEmployees || currentUser.permissions?.canEditSchedules
+              ? 'Gestão Habilitada'
+              : 'Somente Acompanhamento'}
           </span>
         </div>
       )}
