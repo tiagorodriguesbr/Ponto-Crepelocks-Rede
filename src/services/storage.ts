@@ -381,6 +381,13 @@ export const StorageService = {
     let statusMsg = '';
 
     if (punchType === 'entry') {
+      if (record.entry) {
+        return {
+          punch: record,
+          message: 'Entrada já registrada para hoje. Nenhuma nova marcação foi criada.'
+        };
+      }
+
       const schedStartMins = timeToMinutes(record.scheduledStart);
       const actualStartMins = timeToMinutes(timeStr.slice(0, 5));
       const diff = actualStartMins - schedStartMins;
@@ -425,10 +432,28 @@ export const StorageService = {
         record.statusLabel = 'Em Jornada (Pontual)';
       }
     } else if (punchType === 'lunchStart') {
+      if (record.lunchStart) {
+        return {
+          punch: record,
+          message: 'Saída para almoço já registrada hoje.'
+        };
+      }
+      if (!record.entry) {
+        return {
+          punch: record,
+          message: 'Registre primeiro a entrada para habilitar a saída para o almoço.'
+        };
+      }
       record.lunchStart = timeStr;
       statusMsg = 'Saída para refeição/almoço registrada!';
       record.statusLabel = 'Em Horário de Refeição';
     } else if (punchType === 'lunchEnd') {
+      if (record.lunchEnd) {
+        return {
+          punch: record,
+          message: 'Retorno do almoço já registrado hoje.'
+        };
+      }
       if (!record.lunchStart) {
         return {
           punch: record,
@@ -468,6 +493,25 @@ export const StorageService = {
         statusMsg = 'Retorno da refeição registrado com sucesso!';
       }
     } else if (punchType === 'exit') {
+      if (record.exit) {
+        return {
+          punch: record,
+          message: 'Saída da jornada já registrada hoje.'
+        };
+      }
+      if (!record.entry) {
+        return {
+          punch: record,
+          message: 'Registre primeiro a entrada antes de finalizar a jornada.'
+        };
+      }
+      if (!record.lunchEnd) {
+        return {
+          punch: record,
+          message: 'Registre primeiro o retorno do almoço antes de encerrar a jornada.'
+        };
+      }
+
       const scheduledEndMins = timeToMinutes(record.scheduledEnd);
       const actualExitMins = timeToMinutes(timeStr.slice(0, 5));
       const exitLateMin = Math.max(0, actualExitMins - scheduledEndMins);
