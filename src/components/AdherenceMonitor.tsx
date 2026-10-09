@@ -93,19 +93,17 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
     const allPunches = StorageService.getPunches();
     const updated = allPunches.map((p) => {
       if (p.id === adjustingPunch.id) {
-        return {
+        const patched: PunchRecord = {
           ...p,
           entry: editEntry ? `${editEntry}:00` : null,
           lunchStart: editLunchStart ? `${editLunchStart}:00` : null,
           lunchEnd: editLunchEnd ? `${editLunchEnd}:00` : null,
           exit: editExit ? `${editExit}:00` : null,
-          status: 'regular' as const,
-          statusLabel: 'Ajustado Manualmente (Aprovado)',
-          delayMinutes: 0,
-          adherencePercentage: 100,
           notes: adjustReason,
           approvedAdjustment: true
         };
+        StorageService.recalculatePunchMetrics(patched);
+        return patched;
       }
       return p;
     });

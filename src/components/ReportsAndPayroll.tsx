@@ -37,7 +37,7 @@ export const ReportsAndPayroll: React.FC<ReportsAndPayrollProps> = ({
   const canDownload = canDownloadDocuments(currentUser);
   const isManager = isGerenteLoja(currentUser);
 
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
   const [selectedStore, setSelectedStore] = useState<string>(
     isStoreRestricted && currentUser?.storeId ? currentUser.storeId : 'all'
   );

@@ -327,6 +327,10 @@ export const StorageService = {
   savePunches(punches: PunchRecord[]): void {
     saveToStorage(STORAGE_KEYS.PUNCHES, punches);
   },
+  recalculatePunchMetrics(punch: PunchRecord): PunchRecord {
+    recomputePunchMetrics(punch);
+    return punch;
+  },
   registerPunch(
     employee: UserAccount,
     punchType: PunchType,

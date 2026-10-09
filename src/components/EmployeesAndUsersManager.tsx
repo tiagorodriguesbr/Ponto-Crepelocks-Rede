@@ -453,13 +453,14 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
 
     StorageService.addUser(newUser);
 
-    // Auto-generate initial schedule for current month if required to clock in
+    // Auto-generate initial schedule for the current month if required to clock in
     if (!newUser.exemptFromPunchClock) {
+      const today = new Date();
       StorageService.generateMonthlySchedule(
         newUser.id,
         addScheduleType,
-        2026,
-        10,
+        today.getFullYear(),
+        today.getMonth() + 1,
         addDefaultShiftStart,
         addDefaultShiftEnd
       );

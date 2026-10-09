@@ -56,6 +56,14 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
   const [selectedMonthYear, setSelectedMonthYear] = useState<string>(
     `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`
   );
+  const monthOptions = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - 2 + index);
+    return {
+      value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+      label: `${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(date)} / ${date.getFullYear()}`
+    };
+  });
 
   // Synchronize internal and external active tab
   const currentTab = (externalActiveTab === 'bater_ponto' || externalActiveTab === 'minha_aderencia' || externalActiveTab === 'atestados')
@@ -745,10 +753,11 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
                   onChange={(e) => setSelectedMonthYear(e.target.value)}
                   className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
                 >
-                  <option value="2026-09">Setembro / 2026</option>
-                  <option value="2026-10">Outubro / 2026</option>
-                  <option value="2026-11">Novembro / 2026</option>
-                  <option value="2026-12">Dezembro / 2026</option>
+                  {monthOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

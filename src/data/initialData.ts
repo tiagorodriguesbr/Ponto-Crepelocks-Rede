@@ -81,9 +81,10 @@ export const INITIAL_USERS: UserAccount[] = [
   }
 ];
 
-// Helper to generate dates relative to current date (October 2026)
+// Helper to generate dates relative to the current date
 function getRecentDate(daysAgo: number): string {
-  const d = new Date(2026, 9, 6); // October 6, 2026
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - daysAgo);
   return d.toISOString().split('T')[0];
 }
@@ -283,12 +284,16 @@ export const INITIAL_PUNCHES: PunchRecord[] = [
 
 const generateFullMonthSchedules = (): ScheduleDay[] => {
   const schedules: ScheduleDay[] = [];
-  const daysInOct = 31;
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  for (let d = 1; d <= daysInOct; d++) {
+  for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = d < 10 ? `0${d}` : `${d}`;
-    const dateStr = `2026-10-${dayStr}`;
-    const dateObj = new Date(2026, 9, d); // October 2026
+    const monthStr = (month + 1).toString().padStart(2, '0');
+    const dateStr = `${year}-${monthStr}-${dayStr}`;
+    const dateObj = new Date(year, month, d);
     const dayOfWeek = dateObj.getDay(); // 0 = Dom, 5 = Sex, 6 = Sáb
 
     // 1. Maria Oliveira (6x1, 08:00 - 16:20, Folga DSR às sextas / ciclo)
