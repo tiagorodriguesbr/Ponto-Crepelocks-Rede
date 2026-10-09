@@ -429,9 +429,44 @@ export const StorageService = {
       statusMsg = 'Saída para refeição/almoço registrada!';
       record.statusLabel = 'Em Horário de Refeição';
     } else if (punchType === 'lunchEnd') {
+      if (!record.lunchStart) {
+        return {
+          punch: record,
+          message: 'Primeiro registre a saída para o almoço antes de confirmar o retorno.'
+        };
+      }
+
+      const lunchStartMins = timeToMinutes(record.lunchStart);
+      const lunchDurationMin = employee.lunchDurationMin || 60;
+      const allowedReturnMins = lunchStartMins + lunchDurationMin;
+      const actualReturnMins = timeToMinutes(timeStr.slice(0, 5));
+      const lateLunchReturnMin = Math.max(0, actualReturnMins - allowedReturnMins);
+
       record.lunchEnd = timeStr;
-      statusMsg = 'Retorno da refeição registrado com sucesso!';
-      record.statusLabel = 'Em Jornada (Tarde/Segundo Turno)';
+      if (lateLunchReturnMin > 0) {
+        record.delayMinutes = lateLunchReturnMin;
+        record.status = 'atraso';
+        record.statusLabel = `Retorno do almoço com atraso de ${lateLunchReturnMin} min`;
+        this.addNotification({
+          id: `notif-lunch-delay-${Date.now()}`,
+          type: 'atraso',
+          employeeId: employee.id,
+          employeeName: employee.name,
+          storeId: employee.storeId,
+          storeName: store.name,
+          title: `Retorno do almoço em atraso: ${employee.name}`,
+          message: `Funcionário retornou às ${timeStr} com atraso de ${lateLunchReturnMin} min em relação ao limite de ${Math.floor(allowedReturnMins / 60).toString().padStart(2, '0')}:${(allowedReturnMins % 60).toString().padStart(2, '0')}.`,
+          timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          read: false,
+          severity: 'warning'
+        });
+        statusMsg = `Retorno do almoço registrado com atraso de ${lateLunchReturnMin} min.`;
+      } else {
+        record.delayMinutes = 0;
+        record.status = 'regular';
+        record.statusLabel = 'Em Jornada (Tarde/Segundo Turno)';
+        statusMsg = 'Retorno da refeição registrado com sucesso!';
+      }
     } else if (punchType === 'exit') {
       record.exit = timeStr;
       statusMsg = 'Fim de jornada registrado com sucesso! Bom descanso.';
