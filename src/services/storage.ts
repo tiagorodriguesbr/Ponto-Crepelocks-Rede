@@ -401,7 +401,7 @@ export const StorageService = {
       record.hashReceipt = hash;
       statusMsg = 'Início de jornada registrado com sucesso!';
       
-      if (diff > 10) {
+      if (diff > 0) {
         record.delayMinutes = diff;
         record.status = 'atraso';
         record.statusLabel = `Atraso de ${diff} min`;
@@ -414,7 +414,7 @@ export const StorageService = {
           storeId: employee.storeId,
           storeName: store.name,
           title: `Atraso detectado: ${employee.name}`,
-          message: `Funcionário registrou entrada às ${timeStr} (${diff} min de atraso além da tolerância CLT).`,
+          message: `Funcionário registrou entrada às ${timeStr} (${diff} min de atraso em relação ao horário previsto).`,
           timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
           read: false,
           severity: 'warning'
@@ -468,10 +468,22 @@ export const StorageService = {
         statusMsg = 'Retorno da refeição registrado com sucesso!';
       }
     } else if (punchType === 'exit') {
+      const scheduledEndMins = timeToMinutes(record.scheduledEnd);
+      const actualExitMins = timeToMinutes(timeStr.slice(0, 5));
+      const exitLateMin = Math.max(0, actualExitMins - scheduledEndMins);
+
       record.exit = timeStr;
+      if (exitLateMin > 0) {
+        record.delayMinutes = Math.max(record.delayMinutes || 0, exitLateMin);
+        record.status = 'atraso';
+        record.statusLabel = `Saída com atraso de ${exitLateMin} min`;
+      } else {
+        if (!record.entry || record.delayMinutes === 0) {
+          record.status = 'regular';
+          record.statusLabel = 'Jornada Finalizada';
+        }
+      }
       statusMsg = 'Fim de jornada registrado com sucesso! Bom descanso.';
-      record.status = 'regular';
-      record.statusLabel = 'Jornada Finalizada';
     }
 
     recomputePunchMetrics(record);
@@ -1089,6 +1101,7 @@ function calculateExpectedMinutes(start: string, end: string, lunchMin: number):
 function recomputePunchMetrics(punch: PunchRecord): void {
   if (!punch.entry) {
     punch.workedMinutes = 0;
+    punch.delayMinutes = 0;
     return;
   }
 
@@ -1117,9 +1130,31 @@ function recomputePunchMetrics(punch: PunchRecord): void {
     punch.extraMinutes = 0;
   }
 
+  const entryDelay = Math.max(0, entryMins - timeToMinutes(punch.scheduledStart));
+  const exitDelay = punch.exit ? Math.max(0, exitMins - timeToMinutes(punch.scheduledEnd)) : 0;
+  const lunchActualMin = punch.lunchStart && punch.lunchEnd
+    ? Math.max(0, Math.abs(timeToMinutes(punch.lunchEnd) - timeToMinutes(punch.lunchStart)))
+    : 0;
+  const lunchDelay = punch.lunchStart && punch.lunchEnd
+    ? Math.max(0, lunchActualMin - (punch.scheduledLunchMin || 60))
+    : 0;
+
+  punch.delayMinutes = entryDelay + exitDelay + lunchDelay;
+
   if (punch.expectedMinutes > 0) {
-    const ratio = Math.min(100, Math.round((worked / punch.expectedMinutes) * 100));
+    const penaltyRatio = Math.min(100, (punch.delayMinutes / Math.max(1, punch.expectedMinutes)) * 100);
+    const ratio = Math.max(0, Math.round(100 - penaltyRatio));
     punch.adherencePercentage = ratio;
+    if (punch.delayMinutes > 0) {
+      punch.status = 'atraso';
+      punch.statusLabel = `Atraso de ${punch.delayMinutes} min`;
+    } else if (punch.exit) {
+      punch.status = 'regular';
+      punch.statusLabel = 'Jornada Finalizada';
+    } else {
+      punch.status = 'regular';
+      punch.statusLabel = 'Em Jornada (Pontual)';
+    }
   } else {
     punch.adherencePercentage = 100;
   }
