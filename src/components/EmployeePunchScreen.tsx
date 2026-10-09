@@ -52,7 +52,10 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
   const [viewingCert, setViewingCert] = useState<MedicalCertificate | null>(null);
 
   // Month navigation for schedule and history
-  const [selectedMonthYear, setSelectedMonthYear] = useState<string>('2026-10');
+  const currentMonth = new Date();
+  const [selectedMonthYear, setSelectedMonthYear] = useState<string>(
+    `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`
+  );
 
   // Synchronize internal and external active tab
   const currentTab = (externalActiveTab === 'bater_ponto' || externalActiveTab === 'minha_aderencia' || externalActiveTab === 'atestados')

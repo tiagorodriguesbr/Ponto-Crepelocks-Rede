@@ -45,8 +45,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     return defaultEmp ? defaultEmp.id : '';
   });
 
-  const [selectedYear] = useState<number>(2026);
-  const [selectedMonth] = useState<number>(10); // Outubro 2026
+  const [selectedYear] = useState<number>(() => new Date().getFullYear());
+  const [selectedMonth] = useState<number>(() => new Date().getMonth() + 1);
 
   const selectedEmployee = users.find((u) => u.id === selectedEmployeeId) || users[0];
 
@@ -82,7 +82,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   const [showSwapModal, setShowSwapModal] = useState<boolean>(false);
   const [swapEmpA, setSwapEmpA] = useState<string>(selectedEmployee?.id || '');
   const [swapEmpB, setSwapEmpB] = useState<string>('');
-  const [swapDate, setSwapDate] = useState<string>('2026-10-06');
+  const [swapDate, setSwapDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
   // Filter employees
   const availableEmployees = users.filter((u) =>
@@ -647,7 +647,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
               }
             }
 
-            const isToday = dStr === '2026-10-06';
+            const isToday = dStr === new Date().toISOString().split('T')[0];
 
             return (
               <div

@@ -35,7 +35,7 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
   const isReadOnly = currentUser?.role !== 'dono' && !currentUser?.permissions?.canApproveOccurrences;
   const [selectedStore, setSelectedStore] = useState<string>('all');
   const [selectedSchedule, setSelectedSchedule] = useState<string>('all');
-  const [selectedDate, setSelectedDate] = useState<string>('2026-10-06');
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Adjustment Modal State

@@ -36,7 +36,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onNavigateTab,
   onMarkNotificationRead
 }) => {
-  const todayStr = '2026-10-06';
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // Filter by store if selected
   const filteredUsers = users.filter((u) =>

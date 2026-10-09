@@ -81,7 +81,7 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
   // --- CRUD: Ocorrências ---
   const [showNewOccModal, setShowNewOccModal] = useState<boolean>(false);
   const [occEmployeeId, setOccEmployeeId] = useState<string>(users[0]?.id || '');
-  const [occDate, setOccDate] = useState<string>('2026-10-06');
+  const [occDate, setOccDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [occType, setOccType] = useState<OccurrenceType>('folga');
   const [occHoursAbono, setOccHoursAbono] = useState<number>(2);
   const [occReason, setOccReason] = useState<string>('');
@@ -98,7 +98,7 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
 
   const [showNewCertModal, setShowNewCertModal] = useState<boolean>(false);
   const [certEmployeeId, setCertEmployeeId] = useState<string>(users[0]?.id || '');
-  const [certStartDate, setCertStartDate] = useState<string>('2026-10-06');
+  const [certStartDate, setCertStartDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [certDaysOff, setCertDaysOff] = useState<number>(1);
   const [certCid, setCertCid] = useState<string>('');
   const [certDoctorName, setCertDoctorName] = useState<string>('');
