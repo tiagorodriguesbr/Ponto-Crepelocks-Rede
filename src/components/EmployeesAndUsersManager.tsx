@@ -20,10 +20,60 @@ import {
   AlertTriangle,
   Sliders,
   CheckCircle2,
-  Search
+  Search,
+  UserX,
+  FileText,
+  Download,
+  Calendar,
+  RotateCcw,
+  Sparkles,
+  Calculator
 } from 'lucide-react';
-import { UserAccount, Store, Role, ScheduleType, UserPermissions } from '../types';
+import { UserAccount, Store, Role, ScheduleType, UserPermissions, DismissedEmployee, SeveranceReason } from '../types';
 import { StorageService } from '../services/storage';
+import { PayrollCalculatorService } from '../services/payrollCalculator';
+import { SeveranceExportService } from '../services/severanceExport';
+
+export const calculateProbationDates = (
+  admissionStr: string,
+  daysInitial: number = 45,
+  isExtended: boolean = false,
+  daysExtension: number = 45
+) => {
+  try {
+    const [y, m, d] = (admissionStr || '2026-08-01').split('-').map(Number);
+    const admDate = new Date(y, (m || 1) - 1, d || 1);
+
+    const p1Date = new Date(admDate);
+    p1Date.setDate(p1Date.getDate() + (daysInitial || 45));
+    const p1EndStr = p1Date.toISOString().split('T')[0];
+
+    const totalDays = (daysInitial || 45) + (isExtended ? (daysExtension || 45) : 0);
+    const p2Date = new Date(admDate);
+    p2Date.setDate(p2Date.getDate() + totalDays);
+    const finalEndStr = p2Date.toISOString().split('T')[0];
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isOver90Days = totalDays > 90;
+    const isExpiredAndConverted = !isOver90Days && todayStr > finalEndStr;
+
+    return {
+      p1EndStr,
+      finalEndStr,
+      totalDays,
+      isOver90Days,
+      isExpiredAndConverted
+    };
+  } catch {
+    return {
+      p1EndStr: '',
+      finalEndStr: '',
+      totalDays: 90,
+      isOver90Days: false,
+      isExpiredAndConverted: false
+    };
+  }
+};
 
 interface EmployeesAndUsersManagerProps {
   users: UserAccount[];
@@ -40,6 +90,22 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
 }) => {
   const canManageUsers = currentUser.role === 'dono' || Boolean(currentUser.permissions?.canManageEmployees);
   const isReadOnly = !canManageUsers;
+
+  const [mainTab, setMainTab] = useState<'ativos' | 'desligados'>('ativos');
+  const [dismissedEmployees, setDismissedEmployees] = useState<DismissedEmployee[]>(() =>
+    StorageService.getDismissedEmployees()
+  );
+
+  // Modal de Desligamento / Rescisão
+  const [dismissingEmployee, setDismissingEmployee] = useState<UserAccount | null>(null);
+  const [dismissalDate, setDismissalDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [dismissalReason, setDismissalReason] = useState<SeveranceReason>('termino_experiencia');
+  const [dismissalOtherDiscounts, setDismissalOtherDiscounts] = useState<string>('0');
+  const [dismissalNotes, setDismissalNotes] = useState<string>('');
+
+  // Ver Detalhes e Excluir Histórico de Rescisão
+  const [viewingSeverance, setViewingSeverance] = useState<DismissedEmployee | null>(null);
+  const [dismissedToDelete, setDismissedToDelete] = useState<DismissedEmployee | null>(null);
 
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
@@ -59,6 +125,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   // Store link: 'all' (todas atuais e futuras) or 'single' (loja específica)
   const [addStoreLinkType, setAddStoreLinkType] = useState<'all' | 'single'>('all');
   const [addSelectedStoreId, setAddSelectedStoreId] = useState<string>(stores[0]?.id || 'store-1');
+  const [addPayrollStoreId, setAddPayrollStoreId] = useState<string>(stores.find((s) => s.id === 'store-botafogo')?.id || stores[0]?.id || 'store-1');
+  
+  // Data de Admissão, Tipo de Contrato & Experiência
+  const [addAdmissionDate, setAddAdmissionDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [addContractType, setAddContractType] = useState<'experiencia' | 'indeterminado'>('experiencia');
+  const [addProbationDaysInitial, setAddProbationDaysInitial] = useState<number>(45);
+  const [addProbationExtended, setAddProbationExtended] = useState<boolean>(false);
+  const [addProbationDaysExtension, setAddProbationDaysExtension] = useState<number>(45);
+
   // Regime de ponto: exemptFromPunchClock = true (cargo de confiança - não bate ponto) or false (bate ponto)
   const [addExemptFromPunch, setAddExemptFromPunch] = useState<boolean>(true);
   // Painéis: modo acompanhamento (sem modificar) ou permissões personalizadas
@@ -88,6 +163,14 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const [editRole, setEditRole] = useState<Role>('gerente');
   const [editStoreLinkType, setEditStoreLinkType] = useState<'all' | 'single'>('all');
   const [editSelectedStoreId, setEditSelectedStoreId] = useState<string>('');
+  const [editPayrollStoreId, setEditPayrollStoreId] = useState<string>(stores[0]?.id || 'store-1');
+
+  // Data de Admissão, Tipo de Contrato & Experiência na Edição
+  const [editAdmissionDate, setEditAdmissionDate] = useState<string>('');
+  const [editContractType, setEditContractType] = useState<'experiencia' | 'indeterminado'>('experiencia');
+  const [editProbationDaysInitial, setEditProbationDaysInitial] = useState<number>(45);
+  const [editProbationExtended, setEditProbationExtended] = useState<boolean>(false);
+  const [editProbationDaysExtension, setEditProbationDaysExtension] = useState<number>(45);
 
   const CREPELOCKS_CARGOS = [
     { title: 'Atendente', role: 'atendente' as Role, exempt: false, schedule: '6x1' as ScheduleType, allStores: false, badge: 'Operacional' },
@@ -168,6 +251,12 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setAddRole('gerente');
     setAddStoreLinkType('all');
     setAddSelectedStoreId(stores[0]?.id || 'store-1');
+    setAddPayrollStoreId(stores.find((s) => s.id === 'store-botafogo')?.id || stores[0]?.id || 'store-1');
+    setAddAdmissionDate(new Date().toISOString().split('T')[0]);
+    setAddContractType('experiencia');
+    setAddProbationDaysInitial(45);
+    setAddProbationExtended(false);
+    setAddProbationDaysExtension(45);
     setAddExemptFromPunch(true);
     setAddAccompanimentMode(true);
     setAddPositionTitle('Gerente de Loja');
@@ -246,6 +335,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     const isAllStores = user.hasAccessToAllStores === true || user.storeId === 'all' || user.role === 'dono';
     setEditStoreLinkType(isAllStores ? 'all' : 'single');
     setEditSelectedStoreId(!isAllStores ? user.storeId : (stores[0]?.id || 'store-1'));
+    setEditPayrollStoreId(user.payrollStoreId || (!isAllStores ? user.storeId : stores.find((s) => s.id === 'store-botafogo')?.id || stores[0]?.id || 'store-1'));
 
     // Regime de ponto
     setEditExemptFromPunch(user.role === 'dono' ? true : Boolean(user.exemptFromPunchClock));
@@ -272,6 +362,11 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setEditDefaultShiftEnd(user.defaultShiftEnd || '16:20');
     setEditLunchDurationMin(user.lunchDurationMin || 60);
     setEditMfaEnabled(Boolean(user.mfaEnabled));
+    setEditAdmissionDate(user.admissionDate || new Date().toISOString().split('T')[0]);
+    setEditContractType(user.contractType || 'experiencia');
+    setEditProbationDaysInitial(user.probationDaysInitial || 45);
+    setEditProbationExtended(Boolean(user.probationExtended));
+    setEditProbationDaysExtension(user.probationDaysExtension || 45);
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -331,11 +426,13 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       passwordHash: addPassword.trim() || '123456',
       role: addRole,
       storeId: isAllStores ? 'all' : addSelectedStoreId,
+      payrollStoreId: isAllStores ? addPayrollStoreId : addSelectedStoreId,
       hasAccessToAllStores: isAllStores,
       positionTitle: addPositionTitle.trim() || (addRole === 'dono' ? 'Diretor' : addRole === 'gerente' ? 'Gerente de Loja' : 'Atendente'),
       cpf: addCpf.trim() || '000.000.000-00',
       phone: addPhone.trim() || '(11) 90000-0000',
-      admissionDate: new Date().toISOString().split('T')[0],
+      admissionDate: addAdmissionDate || new Date().toISOString().split('T')[0],
+      contractType: addContractType,
       scheduleType: addScheduleType,
       defaultShiftStart: addDefaultShiftStart,
       defaultShiftEnd: addDefaultShiftEnd,
@@ -344,7 +441,14 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       mfaEnabled: addMfaEnabled,
       exemptFromPunchClock: isExempt,
       avatarColor,
-      permissions: finalPermissions
+      permissions: finalPermissions,
+      ...(addContractType === 'experiencia'
+        ? {
+            probationDaysInitial: addProbationDaysInitial,
+            probationExtended: addProbationExtended,
+            ...(addProbationExtended ? { probationDaysExtension: addProbationDaysExtension } : {})
+          }
+        : {})
     };
 
     StorageService.addUser(newUser);
@@ -403,23 +507,102 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       passwordHash: editPassword.trim() || editingUser.passwordHash,
       role: editRole,
       storeId: isAllStores ? 'all' : editSelectedStoreId,
+      payrollStoreId: isAllStores ? editPayrollStoreId : editSelectedStoreId,
       hasAccessToAllStores: isAllStores,
       exemptFromPunchClock: isExempt,
       positionTitle: editPositionTitle.trim(),
       cpf: editCpf.trim(),
       phone: editPhone.trim(),
+      admissionDate: editAdmissionDate || editingUser.admissionDate || new Date().toISOString().split('T')[0],
+      contractType: editContractType,
       scheduleType: editScheduleType,
       defaultShiftStart: editDefaultShiftStart,
       defaultShiftEnd: editDefaultShiftEnd,
       lunchDurationMin: editLunchDurationMin,
       mfaEnabled: editMfaEnabled,
-      permissions: finalPermissions
+      permissions: finalPermissions,
+      ...(editContractType === 'experiencia'
+        ? {
+            probationDaysInitial: editProbationDaysInitial,
+            probationExtended: editProbationExtended,
+            ...(editProbationExtended ? { probationDaysExtension: editProbationDaysExtension } : {})
+          }
+        : {})
     };
+
+    if (editContractType !== 'experiencia') {
+      delete updated.probationDaysInitial;
+      delete updated.probationExtended;
+      delete updated.probationDaysExtension;
+    } else if (!editProbationExtended) {
+      delete updated.probationDaysExtension;
+    }
 
     StorageService.updateUser(updated);
     setEditingUser(null);
     onDataUpdated();
     showToast(`Dados de ${updated.name} atualizados com sucesso!`);
+  };
+
+  // Funções de Rescisão / Desligamento
+  const handleOpenDismissalModal = (emp: UserAccount) => {
+    setDismissingEmployee(emp);
+    setDismissalDate(new Date().toISOString().split('T')[0]);
+    setDismissalReason(emp.contractType === 'experiencia' ? 'termino_experiencia' : 'sem_justa_causa');
+    setDismissalOtherDiscounts('0');
+    setDismissalNotes('');
+  };
+
+  const handleConfirmDismissal = () => {
+    if (!dismissingEmployee) return;
+
+    const baseSalary = StorageService.getPayrollConfigs().find((c) => c.employeeId === dismissingEmployee.id)?.baseSalary || 2000;
+    const storeObj = stores.find((s) => s.id === (dismissingEmployee.payrollStoreId || dismissingEmployee.storeId)) || stores[0];
+
+    const calculation = PayrollCalculatorService.calculateSeverance({
+      employee: dismissingEmployee,
+      baseSalary,
+      admissionDate: dismissingEmployee.admissionDate || '2026-08-01',
+      dismissalDate,
+      reason: dismissalReason,
+      contractType: dismissingEmployee.contractType || 'experiencia',
+      probationDaysInitial: dismissingEmployee.probationDaysInitial || 45,
+      probationExtended: dismissingEmployee.probationExtended,
+      probationDaysExtension: dismissingEmployee.probationDaysExtension || 45,
+      otherDiscounts: parseFloat(dismissalOtherDiscounts.replace(',', '.')) || 0,
+      storeName: storeObj.name,
+      payrollStoreId: storeObj.id
+    });
+
+    const recordToSave: DismissedEmployee = {
+      ...calculation,
+      notes: dismissalNotes.trim() || undefined
+    };
+
+    // Salva no banco de desligados e remove dos ativos
+    StorageService.addDismissedEmployee(recordToSave);
+
+    // Gera e faz download imediato do TRCT em PDF
+    SeveranceExportService.generateSeverancePdf(recordToSave, storeObj);
+
+    setDismissedEmployees(StorageService.getDismissedEmployees());
+    setDismissingEmployee(null);
+    onDataUpdated();
+    showToast(`Colaborador ${dismissingEmployee.name} desligado com sucesso. TRCT em PDF baixado automaticamente!`);
+  };
+
+  const handleReactivateDismissed = (item: DismissedEmployee) => {
+    StorageService.reactivateDismissedEmployee(item.id);
+    setDismissedEmployees(StorageService.getDismissedEmployees());
+    onDataUpdated();
+    showToast(`Colaborador ${item.employeeName} reativado e retornado à equipe ativa.`);
+  };
+
+  const handleDeleteDismissed = (id: string) => {
+    StorageService.deleteDismissedEmployee(id);
+    setDismissedEmployees(StorageService.getDismissedEmployees());
+    setDismissedToDelete(null);
+    showToast('Registro de rescisão excluído do histórico.');
   };
 
   const handleConfirmDelete = () => {
@@ -519,8 +702,38 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
         )}
       </div>
 
-      {/* Filter toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border bg-card/60 border-border text-xs">
+      {/* Navegação Principal: Equipe Ativa vs Banco de Desligados / Demitidos */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-sm">
+        <button
+          onClick={() => setMainTab('ativos')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            mainTab === 'ativos'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Equipe Ativa ({users.length})</span>
+        </button>
+
+        <button
+          onClick={() => setMainTab('desligados')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            mainTab === 'desligados'
+              ? 'bg-rose-600 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
+          }`}
+        >
+          <UserX className="w-4 h-4 text-rose-300" />
+          <span>Banco de Desligados / Demitidos ({dismissedEmployees.length})</span>
+        </button>
+      </div>
+
+      {/* SEÇÃO 1: ABA DE COLABORADORES ATIVOS */}
+      {mainTab === 'ativos' && (
+        <div className="space-y-4">
+          {/* Filter toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border bg-card/60 border-border text-xs">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-zinc-400 font-medium">Cargo:</span>
@@ -601,6 +814,8 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                 filteredUsers.map((user) => {
                   const isAllStores = user.hasAccessToAllStores || user.storeId === 'all' || user.role === 'dono';
                   const store = stores.find((s) => s.id === user.storeId);
+                  const effectivePayrollId = user.payrollStoreId || (!isAllStores ? user.storeId : stores.find((s) => s.id === 'store-botafogo')?.id || stores[0]?.id);
+                  const payrollStore = stores.find((s) => s.id === effectivePayrollId);
                   const isPasswordShown = showPasswordMap[user.id];
                   const isCurrentUser = user.id === currentUser.id;
 
@@ -630,6 +845,17 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                             </div>
                             <div className="text-[10px] text-zinc-400 font-normal">
                               CPF: {user.cpf || 'Não informado'}
+                            </div>
+                            <div className="text-[10px] text-zinc-400 font-normal flex items-center gap-1.5 mt-0.5">
+                              <span>Admissão: <strong className="text-zinc-300">{user.admissionDate || '-'}</strong></span>
+                              <span>•</span>
+                              {user.contractType === 'experiencia' ? (
+                                <span className="text-amber-400 font-medium">
+                                  Experiência ({user.probationDaysInitial || 45}d{user.probationExtended ? `+${user.probationDaysExtension || 45}d` : ''})
+                                </span>
+                              ) : (
+                                <span className="text-emerald-400 font-medium">Indeterminado</span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -685,10 +911,18 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
 
                       <td className="py-3 px-3 font-sans text-zinc-300">
                         {isAllStores ? (
-                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 text-[11px]" title="Vinculado a todas as lojas atuais e futuras">
-                            <Globe className="w-3 h-3 text-emerald-400" />
-                            <span>Todas as Lojas (Rede + Futuras)</span>
-                          </span>
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 text-[11px]" title="Vinculado a todas as lojas atuais e futuras">
+                              <Globe className="w-3 h-3 text-emerald-400" />
+                              <span>Todas as Lojas (Rede)</span>
+                            </span>
+                            {payrollStore && (
+                              <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-amber-400 shrink-0" />
+                                <span>Folha: <strong className="text-zinc-200">{payrollStore.name} ({payrollStore.code})</strong></span>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-zinc-300 text-[11px]">
                             <Building2 className="w-3 h-3 text-zinc-500" />
@@ -739,6 +973,20 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                         ) : (
                           <div className="flex items-center justify-end gap-1.5">
                             <button
+                              onClick={() => handleOpenDismissalModal(user)}
+                              disabled={isCurrentUser}
+                              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition-all inline-flex items-center gap-1 cursor-pointer ${
+                                isCurrentUser
+                                  ? 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
+                                  : 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 text-amber-300 hover:text-white shadow-sm'
+                              }`}
+                              title={isCurrentUser ? 'Você não pode desligar a si mesmo' : 'Desligar colaborador, calcular verbas rescisórias e gerar TRCT em PDF'}
+                            >
+                              <UserX className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Desligar</span>
+                            </button>
+
+                            <button
                               onClick={() => openEditModal(user)}
                               className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-medium transition-all inline-flex items-center gap-1 border border-zinc-700 cursor-pointer"
                               title="Editar este usuário"
@@ -770,6 +1018,150 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
           </table>
         </div>
       </div>
+    </div>
+  )}
+
+      {/* SEÇÃO 2: ABA DE COLABORADORES DESLIGADOS / DEMITIDOS */}
+      {mainTab === 'desligados' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-950/20 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                <UserX className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-sm">Banco de Colaboradores Desligados & Rescisões Trabalhistas</h3>
+                <p className="text-[11px] text-zinc-400">
+                  Histórico de vínculos encerrados. Gere ou baixe novamente o Termo de Rescisão (TRCT em PDF), consulte as verbas pagas ou reative o colaborador se necessário.
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0">
+              {dismissedEmployees.length} registros no histórico
+            </span>
+          </div>
+
+          <div className="p-5 rounded-2xl border bg-card/60 border-border shadow-md">
+            <div className="overflow-x-auto rounded-xl border border-zinc-800">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-zinc-900/90 text-zinc-400 uppercase font-semibold text-[10px] border-b border-zinc-800">
+                  <tr>
+                    <th className="py-3 px-3">Colaborador Desligado</th>
+                    <th className="py-3 px-3">Cargo & Loja de Lotação</th>
+                    <th className="py-3 px-3">Período Trabalhado</th>
+                    <th className="py-3 px-3">Modalidade / Enquadramento CLT</th>
+                    <th className="py-3 px-3 text-right">Líquido Rescisório</th>
+                    <th className="py-3 px-3 text-right">Ações & TRCT</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/60 font-mono">
+                  {dismissedEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-zinc-500 font-sans">
+                        Nenhum colaborador desligado no momento. Quando um funcionário for demitido ou tiver o contrato encerrado, ele será arquivado aqui com o cálculo completo e PDF.
+                      </td>
+                    </tr>
+                  ) : (
+                    dismissedEmployees.map((item) => (
+                      <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="py-3 px-3 font-sans">
+                          <div className="font-bold text-white text-xs">{item.employeeName}</div>
+                          <div className="text-[10px] text-zinc-400">CPF: {item.cpf}</div>
+                        </td>
+
+                        <td className="py-3 px-3 font-sans text-zinc-300">
+                          <div className="font-medium text-white">{item.positionTitle}</div>
+                          <div className="text-[10px] text-zinc-400">{item.storeName}</div>
+                        </td>
+
+                        <td className="py-3 px-3 font-sans text-zinc-300">
+                          <div>
+                            <span className="text-zinc-400">Admissão:</span> {item.admissionDate}
+                          </div>
+                          <div>
+                            <span className="text-rose-400">Desligamento:</span> {item.dismissalDate}
+                          </div>
+                          <div className="text-[10px] text-zinc-500">
+                            {item.daysWorkedTotal} dias cumpridos
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3 font-sans">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-800 text-amber-300 border border-zinc-700 block truncate max-w-[260px]">
+                            {item.reasonLabel}
+                          </span>
+                          <span className="text-[10px] text-zinc-400 block mt-0.5">
+                            {item.contractType === 'experiencia'
+                              ? `Contrato de Experiência (${item.probationDaysInitial || 45}d${item.probationExtended ? ` + ${item.probationDaysExtension || 45}d` : ''})`
+                              : 'Contrato Indeterminado'}
+                          </span>
+                          {item.artigo479IndenizacaoValor && item.artigo479IndenizacaoValor > 0 ? (
+                            <span className="text-[10px] text-amber-400 font-semibold block mt-0.5">
+                              ⚠️ Indenização Art. 479 CLT: R$ {item.artigo479IndenizacaoValor.toFixed(2)}
+                            </span>
+                          ) : null}
+                        </td>
+
+                        <td className="py-3 px-3 text-right font-mono">
+                          <span className="text-sm font-black text-emerald-400 block">
+                            R$ {item.netSeverancePay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 block">
+                            Bruto: R$ {item.totalGrossSeverance.toFixed(2)}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-3 text-right font-sans">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => {
+                                const storeObj = stores.find((s) => s.id === item.storeId) || stores[0];
+                                SeveranceExportService.generateSeverancePdf(item, storeObj);
+                                showToast(`Baixando TRCT em PDF de ${item.employeeName}...`);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold transition-all inline-flex items-center gap-1 shadow cursor-pointer"
+                              title="Baixar Termo de Rescisão Oficial em PDF"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>TRCT (PDF)</span>
+                            </button>
+
+                            <button
+                              onClick={() => setViewingSeverance(item)}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-medium transition-all inline-flex items-center gap-1 border border-zinc-700 cursor-pointer"
+                              title="Ver demonstrativo detalhado das verbas rescisórias"
+                            >
+                              <FileText className="w-3 h-3 text-blue-400" />
+                              <span>Verbas</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleReactivateDismissed(item)}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-300 text-[11px] font-medium transition-all inline-flex items-center gap-1 border border-zinc-700 cursor-pointer"
+                              title="Reativar e reintegrar este colaborador aos ativos"
+                            >
+                              <RotateCcw className="w-3 h-3 text-emerald-400" />
+                              <span>Reativar</span>
+                            </button>
+
+                            <button
+                              onClick={() => setDismissedToDelete(item)}
+                              className="p-1.5 rounded-lg border bg-rose-950/30 hover:bg-rose-900/50 border-rose-500/30 text-rose-300 hover:text-white transition-all cursor-pointer"
+                              title="Excluir permanentemente do histórico de demitidos"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: CRIAR NOVO ACESSO / COLABORADOR */}
       {showAddModal && (
@@ -860,6 +1252,187 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* SEÇÃO: CONTRATO DE TRABALHO, ADMISSÃO & EXPERIÊNCIA (CLT) */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                    Contrato de Trabalho, Admissão & Experiência (CLT)
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Artigos 443 e 445 da CLT</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Data de Admissão Oficial *</label>
+                    <input
+                      type="date"
+                      required
+                      value={addAdmissionDate}
+                      onChange={(e) => setAddAdmissionDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-zinc-500 mt-1 block">
+                      Data exata de registro que constará no holerite e no contrato.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Tipo de Contrato</label>
+                    <div className="grid grid-cols-2 gap-2 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setAddContractType('experiencia')}
+                        className={`py-2 px-2 rounded-lg font-bold text-xs border text-center transition-all cursor-pointer ${
+                          addContractType === 'experiencia'
+                            ? 'bg-amber-950/60 border-amber-500 text-amber-300 ring-1 ring-amber-500'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        Contrato de Experiência
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAddContractType('indeterminado')}
+                        className={`py-2 px-2 rounded-lg font-bold text-xs border text-center transition-all cursor-pointer ${
+                          addContractType === 'indeterminado'
+                            ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 ring-1 ring-emerald-500'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        Prazo Indeterminado
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {addContractType === 'experiencia' && (
+                  <div className="p-3 rounded-xl bg-zinc-900/70 border border-zinc-800/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-amber-400">
+                        1º Período de Experiência (Dias Iniciais):
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        {[30, 45, 60].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setAddProbationDaysInitial(d)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                              addProbationDaysInitial === d
+                                ? 'bg-amber-500 text-black border-amber-400'
+                                : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                            }`}
+                          >
+                            {d} dias
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={addProbationDaysInitial}
+                        onChange={(e) => setAddProbationDaysInitial(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-28 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[11px] text-zinc-400">
+                        dias de experiência inicial (Término previsto: {calculateProbationDates(addAdmissionDate, addProbationDaysInitial, false, 0).p1EndStr.split('-').reverse().join('/')})
+                      </span>
+                    </div>
+
+                    {/* Prorrogação */}
+                    <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 text-zinc-200 cursor-pointer text-xs font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={addProbationExtended}
+                            onChange={(e) => setAddProbationExtended(e.target.checked)}
+                            className="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <span>Prorrogar Contrato de Experiência (Permitida apenas 1 vez pela CLT)</span>
+                        </label>
+                        {addProbationExtended && (
+                          <div className="flex items-center gap-1.5">
+                            {[30, 45, 60].map((d) => (
+                              <button
+                                key={d}
+                                type="button"
+                                onClick={() => setAddProbationDaysExtension(d)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                                  addProbationDaysExtension === d
+                                    ? 'bg-amber-500 text-black border-amber-400'
+                                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                                }`}
+                              >
+                                +{d} dias
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {addProbationExtended && (
+                        <div className="flex items-center gap-2 pl-5">
+                          <input
+                            type="number"
+                            min="1"
+                            max="89"
+                            value={addProbationDaysExtension}
+                            onChange={(e) => setAddProbationDaysExtension(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-28 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                          />
+                          <span className="text-[11px] text-zinc-400">
+                            dias na prorrogação
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Resumo Legal em Tempo Real */}
+                    {(() => {
+                      const info = calculateProbationDates(
+                        addAdmissionDate,
+                        addProbationDaysInitial,
+                        addProbationExtended,
+                        addProbationDaysExtension
+                      );
+                      return (
+                        <div className={`p-2.5 rounded-xl border text-[11px] space-y-1 ${
+                          info.isOver90Days
+                            ? 'bg-rose-950/40 border-rose-500/50 text-rose-300'
+                            : info.isExpiredAndConverted
+                            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-300'
+                        }`}>
+                          <div className="flex items-center justify-between font-bold">
+                            <span>Duração Total da Experiência: {info.totalDays} dias</span>
+                            <span>Término Final: {info.finalEndStr.split('-').reverse().join('/')}</span>
+                          </div>
+                          {info.isOver90Days ? (
+                            <p className="text-[10px] text-rose-400">
+                              ⚠️ <strong>Atenção:</strong> A soma do período inicial e prorrogação é de {info.totalDays} dias, excedendo o limite de 90 dias da CLT. Pela legislação, contratos acima de 90 dias convertem-se automaticamente em prazo indeterminado.
+                            </p>
+                          ) : info.isExpiredAndConverted ? (
+                            <p className="text-[10px] text-emerald-400">
+                              ✓ <strong>Prazo Expirado:</strong> O período de experiência já terminou. O contrato converte-se automaticamente em Contrato por Prazo Indeterminado (Artigo 451 da CLT).
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-zinc-400">
+                              ✓ Conforme CLT (máximo de 90 dias somados e 1 prorrogação). Ao término sem rescisão prévia, vira prazo indeterminado.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
               {/* SEÇÃO 2: TIPO DE PERFIL / CARGO */}
@@ -1074,6 +1647,31 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* Loja de Pagamento do Contracheque (mesmo para quem atua em toda a rede) */}
+                <div className="mt-3 pt-3 border-t border-zinc-900">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                      Loja de Lotação para Folha de Pagamento & Contracheque:
+                    </label>
+                    <span className="text-[10px] text-zinc-400 font-mono">Contracheque</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 mb-2">
+                    Mesmo que os gerentes, diretores ou o dono sejam vinculados a todas as lojas, selecione a loja específica pela qual receberá o salário e constará no holerite (Ex: <em>trabalha pra toda rede mas recebe por Botafogo</em>).
+                  </p>
+                  <select
+                    value={addPayrollStoreId}
+                    onChange={(e) => setAddPayrollStoreId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                  >
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        🏬 {s.name} ({s.code}) {s.cnpj ? `• CNPJ: ${s.cnpj}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1461,6 +2059,187 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                 </div>
               </div>
 
+              {/* SEÇÃO: CONTRATO DE TRABALHO, ADMISSÃO & EXPERIÊNCIA (CLT) */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                    Contrato de Trabalho, Admissão & Experiência (CLT)
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Artigos 443 e 445 da CLT</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Data de Admissão Oficial *</label>
+                    <input
+                      type="date"
+                      required
+                      value={editAdmissionDate}
+                      onChange={(e) => setEditAdmissionDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-zinc-500 mt-1 block">
+                      Data do vínculo empregatício exibida no holerite e relatórios.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Tipo de Contrato</label>
+                    <div className="grid grid-cols-2 gap-2 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditContractType('experiencia')}
+                        className={`py-2 px-2 rounded-lg font-bold text-xs border text-center transition-all cursor-pointer ${
+                          editContractType === 'experiencia'
+                            ? 'bg-amber-950/60 border-amber-500 text-amber-300 ring-1 ring-amber-500'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        Contrato de Experiência
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditContractType('indeterminado')}
+                        className={`py-2 px-2 rounded-lg font-bold text-xs border text-center transition-all cursor-pointer ${
+                          editContractType === 'indeterminado'
+                            ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 ring-1 ring-emerald-500'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        Prazo Indeterminado
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {editContractType === 'experiencia' && (
+                  <div className="p-3 rounded-xl bg-zinc-900/70 border border-zinc-800/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-amber-400">
+                        1º Período de Experiência (Dias Iniciais):
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        {[30, 45, 60].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setEditProbationDaysInitial(d)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                              editProbationDaysInitial === d
+                                ? 'bg-amber-500 text-black border-amber-400'
+                                : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                            }`}
+                          >
+                            {d} dias
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={editProbationDaysInitial}
+                        onChange={(e) => setEditProbationDaysInitial(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-28 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[11px] text-zinc-400">
+                        dias de experiência inicial (Término previsto: {calculateProbationDates(editAdmissionDate, editProbationDaysInitial, false, 0).p1EndStr.split('-').reverse().join('/')})
+                      </span>
+                    </div>
+
+                    {/* Prorrogação */}
+                    <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 text-zinc-200 cursor-pointer text-xs font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={editProbationExtended}
+                            onChange={(e) => setEditProbationExtended(e.target.checked)}
+                            className="rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <span>Prorrogar Contrato de Experiência (Permitida apenas 1 vez pela CLT)</span>
+                        </label>
+                        {editProbationExtended && (
+                          <div className="flex items-center gap-1.5">
+                            {[30, 45, 60].map((d) => (
+                              <button
+                                key={d}
+                                type="button"
+                                onClick={() => setEditProbationDaysExtension(d)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                                  editProbationDaysExtension === d
+                                    ? 'bg-amber-500 text-black border-amber-400'
+                                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                                }`}
+                              >
+                                +{d} dias
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {editProbationExtended && (
+                        <div className="flex items-center gap-2 pl-5">
+                          <input
+                            type="number"
+                            min="1"
+                            max="89"
+                            value={editProbationDaysExtension}
+                            onChange={(e) => setEditProbationDaysExtension(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-28 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                          />
+                          <span className="text-[11px] text-zinc-400">
+                            dias na prorrogação
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Resumo Legal em Tempo Real */}
+                    {(() => {
+                      const info = calculateProbationDates(
+                        editAdmissionDate,
+                        editProbationDaysInitial,
+                        editProbationExtended,
+                        editProbationDaysExtension
+                      );
+                      return (
+                        <div className={`p-2.5 rounded-xl border text-[11px] space-y-1 ${
+                          info.isOver90Days
+                            ? 'bg-rose-950/40 border-rose-500/50 text-rose-300'
+                            : info.isExpiredAndConverted
+                            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-300'
+                        }`}>
+                          <div className="flex items-center justify-between font-bold">
+                            <span>Duração Total da Experiência: {info.totalDays} dias</span>
+                            <span>Término Final: {info.finalEndStr.split('-').reverse().join('/')}</span>
+                          </div>
+                          {info.isOver90Days ? (
+                            <p className="text-[10px] text-rose-400">
+                              ⚠️ <strong>Atenção:</strong> A soma do período inicial e prorrogação é de {info.totalDays} dias, excedendo o limite de 90 dias da CLT. Pela legislação, contratos acima de 90 dias convertem-se automaticamente em prazo indeterminado.
+                            </p>
+                          ) : info.isExpiredAndConverted ? (
+                            <p className="text-[10px] text-emerald-400">
+                              ✓ <strong>Prazo Expirado:</strong> O período de experiência já terminou. O contrato converte-se automaticamente em Contrato por Prazo Indeterminado (Artigo 451 da CLT).
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-zinc-400">
+                              ✓ Conforme CLT (máximo de 90 dias somados e 1 prorrogação). Ao término sem rescisão prévia, vira prazo indeterminado.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
               {/* SEÇÃO 2: CARGO / NÍVEL */}
               <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-3">
                 <div className="flex items-center justify-between">
@@ -1653,6 +2432,31 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* Loja de Pagamento do Contracheque no Edit Modal */}
+                <div className="mt-3 pt-3 border-t border-zinc-900">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                      Loja de Lotação para Folha de Pagamento & Contracheque:
+                    </label>
+                    <span className="text-[10px] text-zinc-400 font-mono">Contracheque</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 mb-2">
+                    Defina por qual loja o colaborador receberá na folha de pagamento e terá o holerite emitido (Ex: <em>vinculado a toda a rede, mas recebe por Botafogo</em>).
+                  </p>
+                  <select
+                    value={editPayrollStoreId}
+                    onChange={(e) => setEditPayrollStoreId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                  >
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        🏬 {s.name} ({s.code}) {s.cnpj ? `• CNPJ: ${s.cnpj}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1985,6 +2789,436 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
               <button
                 type="button"
                 onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-950/50 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: DESLIGAMENTO DE COLABORADOR / RESCISÃO CONTRATUAL & TRCT EM PDF */}
+      {dismissingEmployee && (() => {
+        const baseSalary = StorageService.getPayrollConfigs().find((c) => c.employeeId === dismissingEmployee.id)?.baseSalary || 2000;
+        const storeObj = stores.find((s) => s.id === (dismissingEmployee.payrollStoreId || dismissingEmployee.storeId)) || stores[0];
+
+        const calculation = PayrollCalculatorService.calculateSeverance({
+          employee: dismissingEmployee,
+          baseSalary,
+          admissionDate: dismissingEmployee.admissionDate || '2026-08-01',
+          dismissalDate,
+          reason: dismissalReason,
+          contractType: dismissingEmployee.contractType || 'experiencia',
+          probationDaysInitial: dismissingEmployee.probationDaysInitial || 45,
+          probationExtended: dismissingEmployee.probationExtended,
+          probationDaysExtension: dismissingEmployee.probationDaysExtension || 45,
+          otherDiscounts: parseFloat(dismissalOtherDiscounts.replace(',', '.')) || 0,
+          storeName: storeObj.name,
+          payrollStoreId: storeObj.id
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in overflow-y-auto">
+            <div className="w-full max-w-2xl p-6 rounded-2xl bg-zinc-900 border border-amber-500/40 text-zinc-100 shadow-2xl space-y-4 my-8 max-h-[92vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center border border-amber-500/30 shrink-0 text-amber-400">
+                    <UserX className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Rescisão Contratual & Desligamento CLT</span>
+                    </h3>
+                    <span className="text-[11px] text-zinc-400">
+                      {dismissingEmployee.name} • {dismissingEmployee.positionTitle}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDismissingEmployee(null)}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs">
+                <p>
+                  Ao confirmar, o colaborador será movido para o <strong>Banco de Desligados / Demitidos</strong>, saindo das escalas e folhas ativas, e o <strong>Termo de Rescisão Oficial (TRCT em PDF)</strong> será gerado e baixado imediatamente com todas as verbas e termos legais.
+                </p>
+              </div>
+
+              {/* Dados Contratuais */}
+              <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Data de Admissão:</span>
+                  <strong className="text-white font-mono">{dismissingEmployee.admissionDate || '2026-08-01'}</strong>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Salário Base:</span>
+                  <strong className="text-emerald-400 font-mono">R$ {baseSalary.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Tipo de Vínculo:</span>
+                  <strong className="text-amber-400">
+                    {dismissingEmployee.contractType === 'experiencia'
+                      ? `Experiência (${dismissingEmployee.probationDaysInitial || 45}d${dismissingEmployee.probationExtended ? ` + ${dismissingEmployee.probationDaysExtension || 45}d` : ''})`
+                      : 'Prazo Indeterminado'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Loja de Pagamento:</span>
+                  <strong className="text-zinc-200 truncate block">{storeObj.name}</strong>
+                </div>
+              </div>
+
+              {/* Form Rescisão */}
+              <div className="space-y-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Data de Desligamento / Encerramento *</label>
+                    <input
+                      type="date"
+                      value={dismissalDate}
+                      onChange={(e) => setDismissalDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Motivo do Desligamento (Modalidade CLT) *</label>
+                    <select
+                      value={dismissalReason}
+                      onChange={(e) => setDismissalReason(e.target.value as SeveranceReason)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white text-xs font-semibold focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="termino_experiencia">
+                        Término no Prazo da Experiência (Sem aviso prévio, sem multa 40% FGTS)
+                      </option>
+                      <option value="rescisao_antecipada_empregador">
+                        Rescisão Antecipada pelo Empregador na Experiência (Art. 479 CLT - 50% dos dias restantes)
+                      </option>
+                      <option value="rescisao_antecipada_empregado">
+                        Rescisão Antecipada pelo Empregado na Experiência (Pedido de saída)
+                      </option>
+                      <option value="sem_justa_causa">
+                        Demissão Sem Justa Causa (Prazo Indeterminado - aviso prévio + multa 40% FGTS)
+                      </option>
+                      <option value="com_justa_causa">
+                        Demissão Com Justa Causa (Art. 482 CLT - falta grave)
+                      </option>
+                      <option value="pedido_demissao">
+                        Pedido de Demissão pelo Colaborador
+                      </option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Outros Descontos Rescisórios (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={dismissalOtherDiscounts}
+                      onChange={(e) => setDismissalOtherDiscounts(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Observações da Rescisão</label>
+                    <input
+                      type="text"
+                      value={dismissalNotes}
+                      onChange={(e) => setDismissalNotes(e.target.value)}
+                      placeholder="Ex: Entregou uniforme e crachá sem pendências"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Demonstrativo das Verbas Rescisórias em Tempo Real */}
+              <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+                  <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                    <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+                    Demonstrativo de Verbas Rescisórias (Cálculo Oficial CLT)
+                  </span>
+                  <span className="text-[11px] font-mono text-zinc-400">
+                    {calculation.daysWorkedTotal} dias trabalhados
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 text-xs font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Saldo de Salário ({calculation.saldoSalarioDias} dias):</span>
+                    <span className="font-semibold text-white">R$ {calculation.saldoSalarioValor.toFixed(2)}</span>
+                  </div>
+
+                  {calculation.decimoTerceiroValor > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">13º Salário Proporcional ({calculation.decimoTerceiroProporcionalMeses}/12 avos):</span>
+                      <span className="font-semibold text-emerald-400">+ R$ {calculation.decimoTerceiroValor.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {calculation.feriasProporcionaisValor > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Férias Proporcionais ({calculation.feriasProporcionaisMeses}/12 avos) + 1/3:</span>
+                      <span className="font-semibold text-emerald-400">+ R$ {(calculation.feriasProporcionaisValor + calculation.tercoConstitucionalFerias).toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {calculation.artigo479IndenizacaoValor && calculation.artigo479IndenizacaoValor > 0 ? (
+                    <div className="flex justify-between p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                      <span>⚠️ Indenização Art. 479 CLT (50% de {calculation.artigo479IndenizacaoDias} dias restantes):</span>
+                      <span className="font-bold">+ R$ {calculation.artigo479IndenizacaoValor.toFixed(2)}</span>
+                    </div>
+                  ) : null}
+
+                  {calculation.avisoPrevioIndenizadoValor && calculation.avisoPrevioIndenizadoValor > 0 ? (
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Aviso Prévio Indenizado:</span>
+                      <span className="font-semibold text-emerald-400">+ R$ {calculation.avisoPrevioIndenizadoValor.toFixed(2)}</span>
+                    </div>
+                  ) : null}
+
+                  {calculation.multaFgts40PctValor && calculation.multaFgts40PctValor > 0 ? (
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Multa Rescisória de 40% s/ FGTS:</span>
+                      <span className="font-semibold text-emerald-400">+ R$ {calculation.multaFgts40PctValor.toFixed(2)}</span>
+                    </div>
+                  ) : null}
+
+                  <div className="pt-2 border-t border-zinc-800 flex justify-between font-bold text-white">
+                    <span>Total Bruto da Rescisão:</span>
+                    <span>R$ {calculation.totalGrossSeverance.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex justify-between text-rose-400">
+                    <span>Total de Descontos (INSS + IRPF [isento até R$5.000] + Outros):</span>
+                    <span>- R$ {calculation.totalDeductionsSeverance.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Salário Líquido Rescisório Destacado */}
+                <div className="p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/50 flex items-center justify-between shadow-inner">
+                  <div>
+                    <span className="font-bold text-emerald-300 text-xs block">VALOR LÍQUIDO A PAGAR AO COLABORADOR:</span>
+                    <span className="text-[10px] text-zinc-400">Depositado em conta ou pago na homologação com recibo</span>
+                  </div>
+                  <span className="text-xl font-black text-emerald-400 font-mono">
+                    R$ {calculation.netSeverancePay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setDismissingEmployee(null)}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDismissal}
+                  className="px-5 py-2 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-950/50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Confirmar Desligamento & Baixar TRCT (PDF)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL 2: VISUALIZAÇÃO DETALHADA DE VERBAS RESCISÓRIAS */}
+      {viewingSeverance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-xl p-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-100 shadow-2xl space-y-4 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-emerald-400" />
+                  <span>Demonstrativo Rescisório: {viewingSeverance.employeeName}</span>
+                </h3>
+                <span className="text-[11px] text-zinc-400">
+                  {viewingSeverance.positionTitle} • {viewingSeverance.storeName}
+                </span>
+              </div>
+              <button
+                onClick={() => setViewingSeverance(null)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Resumo Contratual */}
+            <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+              <div>
+                <span className="text-zinc-500 block text-[10px]">Data de Admissão:</span>
+                <strong className="text-white">{viewingSeverance.admissionDate}</strong>
+              </div>
+              <div>
+                <span className="text-zinc-500 block text-[10px]">Data de Rescisão:</span>
+                <strong className="text-rose-400">{viewingSeverance.dismissalDate}</strong>
+              </div>
+              <div>
+                <span className="text-zinc-500 block text-[10px]">Dias Trabalhados:</span>
+                <strong className="text-white">{viewingSeverance.daysWorkedTotal} dias</strong>
+              </div>
+              <div>
+                <span className="text-zinc-500 block text-[10px]">Modalidade:</span>
+                <strong className="text-amber-300">{viewingSeverance.reasonLabel}</strong>
+              </div>
+              <div>
+                <span className="text-zinc-500 block text-[10px]">Tipo de Contrato:</span>
+                <strong className="text-zinc-300">
+                  {viewingSeverance.contractType === 'experiencia'
+                    ? `Experiência (${viewingSeverance.probationDaysInitial || 45}d${viewingSeverance.probationExtended ? ` + ${viewingSeverance.probationDaysExtension || 45}d` : ''})`
+                    : 'Indeterminado'}
+                </strong>
+              </div>
+              <div>
+                <span className="text-zinc-500 block text-[10px]">Enquadramento Legal:</span>
+                <strong className="text-zinc-300">{viewingSeverance.cltArticle || 'CLT'}</strong>
+              </div>
+            </div>
+
+            {/* Rubricas */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs font-mono">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Saldo de Salário ({viewingSeverance.saldoSalarioDias} dias):</span>
+                <span className="text-white">R$ {viewingSeverance.saldoSalarioValor.toFixed(2)}</span>
+              </div>
+              {viewingSeverance.decimoTerceiroValor > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">13º Salário Proporcional ({viewingSeverance.decimoTerceiroProporcionalMeses}/12 avos):</span>
+                  <span className="text-emerald-400">+ R$ {viewingSeverance.decimoTerceiroValor.toFixed(2)}</span>
+                </div>
+              )}
+              {viewingSeverance.feriasProporcionaisValor > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Férias Proporcionais ({viewingSeverance.feriasProporcionaisMeses}/12 avos):</span>
+                  <span className="text-emerald-400">+ R$ {viewingSeverance.feriasProporcionaisValor.toFixed(2)}</span>
+                </div>
+              )}
+              {viewingSeverance.tercoConstitucionalFerias > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">1/3 Constitucional de Férias:</span>
+                  <span className="text-emerald-400">+ R$ {viewingSeverance.tercoConstitucionalFerias.toFixed(2)}</span>
+                </div>
+              )}
+              {viewingSeverance.artigo479IndenizacaoValor && viewingSeverance.artigo479IndenizacaoValor > 0 ? (
+                <div className="flex justify-between text-amber-400 font-bold">
+                  <span>Indenização Art. 479 CLT ({viewingSeverance.artigo479IndenizacaoDias} dias restantes):</span>
+                  <span>+ R$ {viewingSeverance.artigo479IndenizacaoValor.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {viewingSeverance.avisoPrevioIndenizadoValor && viewingSeverance.avisoPrevioIndenizadoValor > 0 ? (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Aviso Prévio Indenizado:</span>
+                  <span className="text-emerald-400">+ R$ {viewingSeverance.avisoPrevioIndenizadoValor.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {viewingSeverance.multaFgts40PctValor && viewingSeverance.multaFgts40PctValor > 0 ? (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Multa Rescisória de 40% s/ FGTS:</span>
+                  <span className="text-emerald-400">+ R$ {viewingSeverance.multaFgts40PctValor.toFixed(2)}</span>
+                </div>
+              ) : null}
+
+              <div className="pt-2 border-t border-zinc-800 flex justify-between font-bold text-white">
+                <span>Total Bruto:</span>
+                <span>R$ {viewingSeverance.totalGrossSeverance.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-rose-400">
+                <span>Descontos (INSS + IRPF [isento até R$5.000]):</span>
+                <span>- R$ {viewingSeverance.totalDeductionsSeverance.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Total Líquido */}
+            <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between">
+              <span className="font-bold text-emerald-300 text-xs">VALOR LÍQUIDO RESCISÓRIO QUITADO:</span>
+              <span className="text-lg font-black text-emerald-400 font-mono">
+                R$ {viewingSeverance.netSeverancePay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+
+            {viewingSeverance.notes && (
+              <p className="text-[11px] text-zinc-400 italic">
+                Observações: {viewingSeverance.notes}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setViewingSeverance(null)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const storeObj = stores.find((s) => s.id === viewingSeverance.storeId) || stores[0];
+                  SeveranceExportService.generateSeverancePdf(viewingSeverance, storeObj);
+                  showToast(`Baixando TRCT em PDF de ${viewingSeverance.employeeName}...`);
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 cursor-pointer shadow"
+              >
+                <Download className="w-4 h-4" />
+                <span>Baixar TRCT (PDF)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: EXCLUSÃO DEFINITIVA DO HISTÓRICO DE DESLIGADOS */}
+      {dismissedToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-md p-6 rounded-2xl bg-zinc-900 border border-rose-500/40 text-zinc-100 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center border border-rose-500/30 shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Excluir Registro de Rescisão</h3>
+                <span className="text-[11px] text-zinc-400">Esta ação é irreversível</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Deseja realmente remover o histórico de rescisão de <strong>{dismissedToDelete.employeeName}</strong>?
+              O registro das verbas calculadas e termo de rescisão não estará mais visível na listagem.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setDismissedToDelete(null)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteDismissed(dismissedToDelete.id)}
                 className="px-4 py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-950/50 flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />

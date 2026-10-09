@@ -84,7 +84,29 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
 
   const allCompletedToday = hasEntry && hasLunchStart && hasLunchEnd && hasExit;
 
+  // Limitador de Ponto: entrada permitida apenas com até 5 minutos de antecedência
+  const todaySchedule = schedules.find((s) => s.employeeId === currentUser.id && s.date === todayStr);
+  const scheduledEntryTime = todaySchedule?.shiftStart || currentUser.defaultShiftStart || '08:00';
+  
+  const now = new Date();
+  const nowTotalMins = now.getHours() * 60 + now.getMinutes();
+  const [schedH, schedM] = scheduledEntryTime.split(':').map(Number);
+  const schedTotalMins = (schedH || 0) * 60 + (schedM || 0);
+  const earliestAllowedMins = Math.max(0, schedTotalMins - 5);
+
+  const isEntryLocked = !currentUser.exemptFromPunchClock && nowTotalMins < earliestAllowedMins;
+  const allowedH = Math.floor(earliestAllowedMins / 60).toString().padStart(2, '0');
+  const allowedM = (earliestAllowedMins % 60).toString().padStart(2, '0');
+  const allowedTimeStr = `${allowedH}:${allowedM}`;
+
   const handlePunch = (type: PunchType) => {
+    if (type === 'entry' && isEntryLocked) {
+      setPunchFeedback({
+        message: `Ponto bloqueado: Seu horário de entrada é às ${scheduledEntryTime}. A batida é liberada a partir das ${allowedTimeStr} (5 minutos de antecedência).`
+      });
+      return;
+    }
+
     const res = StorageService.registerPunch(currentUser, type);
     setPunchFeedback({
       message: res.message,
@@ -128,36 +150,42 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
     const dayName = weekDayNames[dayOfWeek];
     const dayShort = weekDayShort[dayOfWeek];
 
-    // Check explicit saved schedule
+    // Check explicit saved schedule & occurrences
     const explicit = schedules.find((s) => s.employeeId === currentUser.id && s.date === dStr);
-    if (explicit) {
-      return {
-        dateStr: dStr,
-        day,
-        dayName,
-        dayShort,
-        isOffDay: explicit.isOffDay,
-        isExtraDay: explicit.isExtraDay,
-        shiftStart: explicit.shiftStart,
-        shiftEnd: explicit.shiftEnd,
-        notes: explicit.notes,
-        scheduleType: explicit.scheduleType
-      };
+    const occ = occurrences.find((o) => o.employeeId === currentUser.id && o.date === dStr);
+
+    let isOff = explicit ? explicit.isOffDay : false;
+    let isExtra = explicit ? explicit.isExtraDay : false;
+    let shiftStart = explicit ? explicit.shiftStart : currentUser.defaultShiftStart;
+    let shiftEnd = explicit ? explicit.shiftEnd : currentUser.defaultShiftEnd;
+    let notes = explicit ? (explicit.notes || '') : '';
+    let scheduleType = explicit ? explicit.scheduleType : currentUser.scheduleType;
+
+    if (!explicit) {
+      if (currentUser.scheduleType === '5x2') {
+        isOff = dayOfWeek === 0 || dayOfWeek === 6;
+        notes = isOff ? (dayOfWeek === 6 ? 'Folga Sábado (DSR 5x2)' : 'Folga Domingo (DSR 5x2)') : 'Jornada Administrativa';
+      } else if (currentUser.scheduleType === '6x1') {
+        isOff = dayOfWeek === 0;
+        notes = isOff ? 'Descanso Semanal Remunerado (DSR 6x1)' : 'Plantão 6x1';
+      } else if (currentUser.scheduleType === '12x36') {
+        isOff = day % 2 !== 0;
+        notes = isOff ? 'Descanso 36h (Plantão 12x36)' : 'Plantão 12h';
+      }
     }
 
-    // Dynamic resolution based on user scale if not explicitly generated
-    let isOff = false;
-    let notes = '';
-
-    if (currentUser.scheduleType === '5x2') {
-      isOff = dayOfWeek === 0 || dayOfWeek === 6;
-      notes = isOff ? (dayOfWeek === 6 ? 'Folga Sábado (DSR 5x2)' : 'Folga Domingo (DSR 5x2)') : 'Jornada Administrativa';
-    } else if (currentUser.scheduleType === '6x1') {
-      isOff = dayOfWeek === 0;
-      notes = isOff ? 'Descanso Semanal Remunerado (DSR 6x1)' : 'Plantão 6x1';
-    } else if (currentUser.scheduleType === '12x36') {
-      isOff = day % 2 !== 0;
-      notes = isOff ? 'Descanso 36h (Plantão 12x36)' : 'Plantão 12h';
+    if (occ) {
+      if (occ.type === 'dia_extra') {
+        isExtra = true;
+        isOff = false;
+        notes = `Dia Extra Confirmado: ${occ.reason}`;
+      } else if (occ.type === 'folga') {
+        isOff = true;
+        isExtra = false;
+        notes = `Folga Concedida: ${occ.reason}`;
+      } else if (occ.type === 'falta_justificada') {
+        notes = `Falta Justificada: ${occ.reason}`;
+      }
     }
 
     return {
@@ -166,11 +194,11 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
       dayName,
       dayShort,
       isOffDay: isOff,
-      isExtraDay: false,
-      shiftStart: currentUser.defaultShiftStart,
-      shiftEnd: currentUser.defaultShiftEnd,
+      isExtraDay: isExtra,
+      shiftStart,
+      shiftEnd,
       notes,
-      scheduleType: currentUser.scheduleType
+      scheduleType
     };
   };
 
@@ -256,6 +284,39 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
           <span>Atestados ({myCertificates.length})</span>
         </button>
       </div>
+
+      {/* Banner de Atualizações Recentes de Escala (Dias Extras e Trocas) */}
+      {(() => {
+        const myExtraShifts = schedules.filter((s) => s.employeeId === currentUser.id && s.isExtraDay && s.date.startsWith(selectedMonthYear));
+        const myOccExtraShifts = occurrences.filter((o) => o.employeeId === currentUser.id && o.type === 'dia_extra' && o.date.startsWith(selectedMonthYear));
+        const mySwapShifts = schedules.filter((s) => s.employeeId === currentUser.id && s.notes?.includes('Troca de turno') && s.date.startsWith(selectedMonthYear));
+        const totalExtras = myExtraShifts.length + myOccExtraShifts.length;
+        const totalSwaps = mySwapShifts.length;
+
+        if (totalExtras === 0 && totalSwaps === 0) return null;
+
+        return (
+          <div className="p-3.5 rounded-xl border border-emerald-500/40 bg-emerald-950/30 text-xs flex items-center justify-between gap-3 text-emerald-200 shadow-md">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div>
+                <span className="font-bold text-white block">Escala Atualizada pela Gerência:</span>
+                <span className="text-emerald-300/90 text-[11px]">
+                  {totalExtras > 0 ? `⭐ ${totalExtras} dia(s) extra(s) agendado(s). ` : ''}
+                  {totalSwaps > 0 ? `🔄 ${totalSwaps} troca(s) de turno confirmada(s). ` : ''}
+                  Consulte os detalhes na aba <strong>Minha Escala & Aderência</strong>.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => handleTabSwitch('minha_aderencia')}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shrink-0 transition-all shadow"
+            >
+              Ver Escala
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Feedback Banner upon Punch */}
       {punchFeedback && (
@@ -353,6 +414,24 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
                       <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-semibold">
                         <CheckCircle2 className="w-3 h-3" /> Registrado
                       </span>
+                    </div>
+                  ) : isEntryLocked ? (
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={() => {
+                          setPunchFeedback({
+                            message: `Ponto bloqueado: Seu horário contratual de entrada é às ${scheduledEntryTime}. O ponto só é liberado a partir das ${allowedTimeStr} (5 minutos de antecedência).`
+                          });
+                        }}
+                        className="w-full py-2.5 px-2 rounded-lg text-xs font-bold bg-zinc-800/90 text-amber-300 border border-amber-500/30 transition-all flex items-center justify-center gap-1.5 cursor-not-allowed hover:bg-zinc-800 shadow"
+                        title={`Entrada liberada às ${allowedTimeStr}`}
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Liberado às {allowedTimeStr}</span>
+                      </button>
+                      <p className="text-[10px] text-amber-400/90 text-center leading-tight">
+                        Liberado às {allowedTimeStr} (5 min antes das {scheduledEntryTime})
+                      </p>
                     </div>
                   ) : (
                     <button

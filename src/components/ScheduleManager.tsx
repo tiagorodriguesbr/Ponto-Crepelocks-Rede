@@ -181,33 +181,74 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     const schA = list.find((s) => s.employeeId === swapEmpA && s.date === swapDate);
     const schB = list.find((s) => s.employeeId === swapEmpB && s.date === swapDate);
 
-    const empAName = users.find((u) => u.id === swapEmpA)?.name || 'Colaborador A';
-    const empBName = users.find((u) => u.id === swapEmpB)?.name || 'Colaborador B';
+    const empA = users.find((u) => u.id === swapEmpA);
+    const empB = users.find((u) => u.id === swapEmpB);
 
-    if (schA && schB) {
-      const newSchA: ScheduleDay = {
-        ...schA,
-        shiftStart: schB.shiftStart,
-        shiftEnd: schB.shiftEnd,
-        isOffDay: schB.isOffDay,
-        notes: `Troca de turno autorizada com ${empBName}`
-      };
-      const newSchB: ScheduleDay = {
-        ...schB,
-        shiftStart: schA.shiftStart,
-        shiftEnd: schA.shiftEnd,
-        isOffDay: schA.isOffDay,
-        notes: `Troca de turno autorizada com ${empAName}`
-      };
-
-      StorageService.setScheduleDay(newSchA);
-      StorageService.setScheduleDay(newSchB);
-      setShowSwapModal(false);
-      showFeedback(`Permuta de turno realizada com sucesso entre ${empAName} e ${empBName}!`);
-      onDataUpdated();
-    } else {
-      showFeedback('Não foram encontrados registros de escala para ambos os colaboradores nesta data.');
+    if (!empA || !empB) {
+      showFeedback('Colaboradores não identificados para a troca.');
+      return;
     }
+
+    const targetSchA: ScheduleDay = schA || {
+      id: `sch-${empA.id}-${swapDate}`,
+      employeeId: empA.id,
+      date: swapDate,
+      shiftStart: empA.defaultShiftStart,
+      shiftEnd: empA.defaultShiftEnd,
+      isOffDay: false,
+      isExtraDay: false,
+      scheduleType: empA.scheduleType,
+      notes: 'Horário Contratual'
+    };
+
+    const targetSchB: ScheduleDay = schB || {
+      id: `sch-${empB.id}-${swapDate}`,
+      employeeId: empB.id,
+      date: swapDate,
+      shiftStart: empB.defaultShiftStart,
+      shiftEnd: empB.defaultShiftEnd,
+      isOffDay: false,
+      isExtraDay: false,
+      scheduleType: empB.scheduleType,
+      notes: 'Horário Contratual'
+    };
+
+    const newSchA: ScheduleDay = {
+      ...targetSchA,
+      shiftStart: targetSchB.shiftStart,
+      shiftEnd: targetSchB.shiftEnd,
+      isOffDay: targetSchB.isOffDay,
+      notes: `Troca de turno autorizada com ${empB.name}`
+    };
+    const newSchB: ScheduleDay = {
+      ...targetSchB,
+      shiftStart: targetSchA.shiftStart,
+      shiftEnd: targetSchA.shiftEnd,
+      isOffDay: targetSchA.isOffDay,
+      notes: `Troca de turno autorizada com ${empA.name}`
+    };
+
+    StorageService.setScheduleDay(newSchA);
+    StorageService.setScheduleDay(newSchB);
+
+    // Adiciona notificação de troca de escala para auditoria
+    StorageService.addNotification({
+      id: `notif-swap-${Date.now()}`,
+      type: 'escala_modificada',
+      employeeId: empA.id,
+      employeeName: empA.name,
+      storeId: empA.storeId,
+      storeName: stores.find((s) => s.id === empA.storeId)?.name || 'Crepelocks',
+      title: `Troca de Escala: ${empA.name} ⇄ ${empB.name}`,
+      message: `Permuta de horário realizada para a data ${swapDate.split('-').reverse().join('/')}.`,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      read: false,
+      severity: 'info'
+    });
+
+    setShowSwapModal(false);
+    showFeedback(`Permuta de turno realizada com sucesso entre ${empA.name} e ${empB.name}!`);
+    onDataUpdated();
   };
 
   return (

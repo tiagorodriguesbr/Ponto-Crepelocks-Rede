@@ -31,11 +31,18 @@ export interface UserAccount {
   passwordHash: string; // Plain/encrypted storage representation
   role: Role;
   storeId: string;
+  payrollStoreId?: string; // Loja de Lotação / Pagamento do Contra-cheque
   hasAccessToAllStores?: boolean; // Vinculado a todas as lojas (atuais e futuras)
   positionTitle: string; // e.g. "Atendente de Balcão", "Gerente de Unidade", "Diretor Executivo"
   cpf?: string;
   phone?: string;
   admissionDate: string;
+  contractType?: 'experiencia' | 'indeterminado';
+  probationDaysInitial?: number; // Ex: 30, 45, 60 (máximo 90)
+  probationExtended?: boolean; // Se teve prorrogação (máximo 1 vez)
+  probationDaysExtension?: number; // Ex: 30, 45, 60 (soma <= 90)
+  probationEndDate?: string; // Data final da experiência
+  isProbationConvertedToIndefinite?: boolean; // Acima de 90 dias ou término do prazo
   scheduleType: ScheduleType;
   defaultShiftStart: string; // "08:00" or "14:00" or "10:00"
   defaultShiftEnd: string;   // "16:20" or "22:20" or "22:00"
@@ -166,6 +173,7 @@ export interface MonthlyClosureSummary {
 // Configurações e Cálculos de Folha de Pagamento por Colaborador
 export interface PayrollEmployeeConfig {
   employeeId: string;
+  payrollStoreId?: string; // Loja de Lotação / Pagamento desta folha
   monthYear?: string; // e.g. "2026-10" ou global
   baseSalary: number; // Salário Bruto contratual / Pro-labore do dono
   bonusGratification: number; // Gratificação de função, bonificação ou prêmio
@@ -202,6 +210,8 @@ export interface PayrollCalculationResult {
   positionTitle: string;
   role: Role;
   storeName: string;
+  storeCode?: string;
+  payrollStoreId?: string;
   monthYear: string;
   
   // Proventos / Vencimentos
@@ -229,5 +239,80 @@ export interface PayrollCalculationResult {
   // Resultado
   netSalary: number; // Salário Líquido (A Receber)
   fgtsEmployer: number; // FGTS patronal informativo (8% CLT)
+}
+
+// Rescisão Contratual & Colaboradores Desligados
+export type SeveranceReason =
+  | 'termino_experiencia' // Término no prazo acordado (sem aviso prévio, sem multa 40% FGTS)
+  | 'rescisao_antecipada_empregador' // Demissão antecipada pelo empregador (Art. 479 CLT: 50% dos salários restantes + multa 40%)
+  | 'rescisao_antecipada_empregado' // Pedido de demissão antecipado pelo empregado (Art. 480 CLT)
+  | 'sem_justa_causa' // Demissão sem justa causa (contrato indeterminado - aviso prévio + multa 40% FGTS)
+  | 'com_justa_causa' // Demissão com justa causa (Art. 482 CLT - apenas saldo salário e férias vencidas)
+  | 'pedido_demissao'; // Pedido de demissão voluntário pelo colaborador
+
+export interface DismissedEmployee {
+  id: string; // ID da rescisão
+  employeeId: string;
+  employeeName: string;
+  cpf: string;
+  positionTitle: string;
+  role: Role;
+  storeId: string;
+  storeName: string;
+  payrollStoreId?: string;
+  
+  // Datas e Contrato
+  admissionDate: string;
+  dismissalDate: string;
+  contractType: 'experiencia' | 'indeterminado';
+  probationDaysInitial?: number;
+  probationExtended?: boolean;
+  probationDaysExtension?: number;
+  probationTotalDays?: number;
+  daysWorkedTotal: number;
+  daysRemainingInProbation?: number;
+  
+  // Motivo e Classificação Legal
+  reason: SeveranceReason;
+  reasonLabel: string;
+  cltArticle?: string;
+  
+  // Remuneração base de cálculo
+  baseSalary: number;
+  
+  // Verbas Rescisórias (Proventos)
+  saldoSalarioDias: number;
+  saldoSalarioValor: number;
+  decimoTerceiroProporcionalMeses: number;
+  decimoTerceiroValor: number;
+  feriasProporcionaisMeses: number;
+  feriasProporcionaisValor: number;
+  tercoConstitucionalFerias: number;
+  
+  // Indenizações CLT
+  artigo479IndenizacaoDias?: number; // 50% dos dias faltantes
+  artigo479IndenizacaoValor?: number; // 50% dos salários faltantes
+  avisoPrevioIndenizadoValor?: number;
+  
+  // Multa FGTS informativa
+  multaFgts40PctValor?: number;
+  saqueFgtsLiberado: boolean;
+  
+  // Deduções Legais
+  descontoInssSaldoSalario: number;
+  descontoInssDecimoTerceiro: number;
+  descontoIrpf: number;
+  outrosDescontos: number;
+  
+  // Totais
+  totalGrossSeverance: number;
+  totalDeductionsSeverance: number;
+  netSeverancePay: number;
+  
+  // Assinaturas e Auditoria
+  signedByEmployer?: string;
+  notes?: string;
+  createdAt: string;
+  originalUserData: UserAccount;
 }
 

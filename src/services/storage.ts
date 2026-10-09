@@ -19,7 +19,8 @@ import {
   ThemeStyle,
   ScheduleType,
   PunchType,
-  PayrollEmployeeConfig
+  PayrollEmployeeConfig,
+  DismissedEmployee
 } from '../types';
 import {
   INITIAL_STORES,
@@ -41,6 +42,7 @@ const STORAGE_KEYS = {
   CERTIFICATES: 'crepelocks_certificates_v2',
   NOTIFICATIONS: 'crepelocks_notifications_v2',
   PAYROLL_CONFIGS: 'crepelocks_payroll_configs_v2',
+  DISMISSED_EMPLOYEES: 'crepelocks_dismissed_employees_v2',
   THEME: 'crepelocks_theme_v2',
   CURRENT_USER: 'crepelocks_current_user_v2',
   CLOUD_INITIALIZED: 'crepelocks_cloud_init_v2',
@@ -86,6 +88,38 @@ export function generatePunchReceiptHash(
   return `SHA256:CPK-${hex}-${extraHex}-${timeHex}`;
 }
 
+/**
+ * Remove recursivamente campos com valor undefined para que o Firestore
+ * nunca rejeite a gravação com o erro "Unsupported field value: undefined"
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => cleanForFirestore(item)) as any;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const res: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      if (value !== undefined) {
+        res[key] = cleanForFirestore(value);
+      }
+    }
+    return res as T;
+  }
+  return data;
+}
+
+/**
+ * Salva no Firestore garantindo que nenhum valor 'undefined' seja enviado.
+ */
+export function safeFirestoreSetDoc(docRef: any, data: any) {
+  return setDoc(docRef, cleanForFirestore(data));
+}
+
 export const StorageService = {
   // Theme
   getTheme(): ThemeStyle {
@@ -111,20 +145,22 @@ export const StorageService = {
     saveToStorage(STORAGE_KEYS.STORES, stores);
   },
   addStore(store: Store): void {
+    const cleaned = cleanForFirestore(store);
     const stores = this.getStores();
-    stores.push(store);
+    stores.push(cleaned);
     this.saveStores(stores);
     // Sync to Firestore
-    setDoc(doc(db, 'stores', store.id), store).catch((err) =>
-      handleFirestoreError(err, OperationType.WRITE, `stores/${store.id}`)
+    safeFirestoreSetDoc(doc(db, 'stores', cleaned.id), cleaned).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `stores/${cleaned.id}`)
     );
   },
   updateStore(updated: Store): void {
-    const stores = this.getStores().map((s) => (s.id === updated.id ? updated : s));
+    const cleaned = cleanForFirestore(updated);
+    const stores = this.getStores().map((s) => (s.id === cleaned.id ? cleaned : s));
     this.saveStores(stores);
     // Sync to Firestore
-    setDoc(doc(db, 'stores', updated.id), updated).catch((err) =>
-      handleFirestoreError(err, OperationType.WRITE, `stores/${updated.id}`)
+    safeFirestoreSetDoc(doc(db, 'stores', cleaned.id), cleaned).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `stores/${cleaned.id}`)
     );
   },
   deleteStore(storeId: string): void {
@@ -137,50 +173,151 @@ export const StorageService = {
 
   // Users
   getUsers(): UserAccount[] {
-    const list = getFromStorage<UserAccount[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
-    let modified = false;
-    INITIAL_USERS.forEach((initU) => {
-      if (!list.some((u) => u.id === initU.id)) {
-        list.push(initU);
-        modified = true;
-      }
-    });
-    if (modified) {
+    let list = getFromStorage<UserAccount[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    
+    // Purge old pre-seeded mock users so user can start clean as requested
+    const MOCK_IDS_TO_PURGE = new Set([
+      'user-marcos', 'user-fernando', 'user-carlos', 'user-juliana',
+      'user-rafael', 'user-camila', 'user-maria', 'user-lucas',
+      'user-gabriel', 'user-beatriz'
+    ]);
+    
+    const hadMocks = list.some((u) => MOCK_IDS_TO_PURGE.has(u.id));
+    if (hadMocks) {
+      list = list.filter((u) => !MOCK_IDS_TO_PURGE.has(u.id));
+      MOCK_IDS_TO_PURGE.forEach((mid) => {
+        deleteDoc(doc(db, 'users', mid)).catch(() => {});
+      });
       saveToStorage(STORAGE_KEYS.USERS, list);
     }
+
+    // Ensure at least admin exists if list is somehow empty
+    if (list.length === 0 && INITIAL_USERS.length > 0) {
+      list = [...INITIAL_USERS];
+      saveToStorage(STORAGE_KEYS.USERS, list);
+    }
+
+    // Ensure Tiago Rodrigues (user-admin) has Botafogo assigned as payment store
+    let updatedAdmin = false;
+    list.forEach((u) => {
+      if (u.id === 'user-admin' && (!u.payrollStoreId || u.payrollStoreId !== 'store-botafogo')) {
+        u.payrollStoreId = 'store-botafogo';
+        updatedAdmin = true;
+      }
+    });
+    if (updatedAdmin) {
+      saveToStorage(STORAGE_KEYS.USERS, list);
+    }
+
     return list;
   },
   saveUsers(users: UserAccount[]): void {
     saveToStorage(STORAGE_KEYS.USERS, users);
   },
   addUser(user: UserAccount): void {
+    const cleaned = cleanForFirestore(user);
     const users = this.getUsers();
-    users.push(user);
+    users.push(cleaned);
     this.saveUsers(users);
     // Sync to Firestore
-    setDoc(doc(db, 'users', user.id), user).catch((err) =>
-      handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`)
+    safeFirestoreSetDoc(doc(db, 'users', cleaned.id), cleaned).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `users/${cleaned.id}`)
     );
   },
   updateUser(updated: UserAccount): void {
-    const users = this.getUsers().map((u) => (u.id === updated.id ? updated : u));
+    const cleaned = cleanForFirestore(updated);
+    const users = this.getUsers().map((u) => (u.id === cleaned.id ? cleaned : u));
     this.saveUsers(users);
     const current = this.getCurrentUser();
-    if (current && current.id === updated.id) {
-      this.setCurrentUser(updated);
+    if (current && current.id === cleaned.id) {
+      this.setCurrentUser(cleaned);
     }
     // Sync to Firestore
-    setDoc(doc(db, 'users', updated.id), updated).catch((err) =>
-      handleFirestoreError(err, OperationType.WRITE, `users/${updated.id}`)
+    safeFirestoreSetDoc(doc(db, 'users', cleaned.id), cleaned).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `users/${cleaned.id}`)
     );
   },
   deleteUser(userId: string): void {
     const users = this.getUsers().filter((u) => u.id !== userId);
     this.saveUsers(users);
+
+    // Completely remove payroll configs for deleted user
+    const configs = this.getPayrollConfigs().filter((c) => c.employeeId !== userId);
+    this.savePayrollConfigs(configs);
+
+    // Remove punches
+    const punches = this.getPunches().filter((p) => p.employeeId !== userId);
+    this.savePunches(punches);
+
+    // Remove schedules
+    const schedules = this.getSchedules().filter((s) => s.employeeId !== userId);
+    this.saveSchedules(schedules);
+
+    // Remove occurrences
+    const occurrences = this.getOccurrences().filter((o) => o.employeeId !== userId);
+    this.saveOccurrences(occurrences);
+
+    // Remove certificates
+    const certificates = this.getCertificates().filter((c) => c.employeeId !== userId);
+    this.saveCertificates(certificates);
+
+    // Remove notifications
+    const notifications = this.getNotifications().filter((n) => n.employeeId !== userId);
+    this.saveNotifications(notifications);
+
     // Sync to Firestore
     deleteDoc(doc(db, 'users', userId)).catch((err) =>
       handleFirestoreError(err, OperationType.DELETE, `users/${userId}`)
     );
+    deleteDoc(doc(db, 'payrollConfigs', userId)).catch(() => {});
+  },
+
+  // Dismissed Employees (Banco de Desligados / Demitidos & Histórico de Rescisões)
+  getDismissedEmployees(): DismissedEmployee[] {
+    return getFromStorage<DismissedEmployee[]>(STORAGE_KEYS.DISMISSED_EMPLOYEES, []);
+  },
+  saveDismissedEmployees(list: DismissedEmployee[]): void {
+    saveToStorage(STORAGE_KEYS.DISMISSED_EMPLOYEES, list);
+  },
+  addDismissedEmployee(record: DismissedEmployee): void {
+    const cleaned = cleanForFirestore(record);
+    const list = this.getDismissedEmployees();
+    list.unshift(cleaned);
+    this.saveDismissedEmployees(list);
+
+    // Remove user from active users so they no longer appear in active lists, clocks, schedules and payroll
+    const activeUsers = this.getUsers().filter((u) => u.id !== record.employeeId);
+    this.saveUsers(activeUsers);
+
+    // Sync to Firestore
+    safeFirestoreSetDoc(doc(db, 'dismissedEmployees', cleaned.id), cleaned).catch(() => {});
+    deleteDoc(doc(db, 'users', record.employeeId)).catch(() => {});
+  },
+  deleteDismissedEmployee(id: string): void {
+    const list = this.getDismissedEmployees().filter((d) => d.id !== id);
+    this.saveDismissedEmployees(list);
+    deleteDoc(doc(db, 'dismissedEmployees', id)).catch(() => {});
+  },
+  reactivateDismissedEmployee(id: string): UserAccount | null {
+    const list = this.getDismissedEmployees();
+    const item = list.find((d) => d.id === id);
+    if (!item) return null;
+
+    // Remove from dismissed
+    this.saveDismissedEmployees(list.filter((d) => d.id !== id));
+    deleteDoc(doc(db, 'dismissedEmployees', id)).catch(() => {});
+
+    // Restore to active users
+    const restoredUser: UserAccount = cleanForFirestore({
+      ...item.originalUserData,
+      active: true
+    });
+    const activeUsers = this.getUsers();
+    activeUsers.push(restoredUser);
+    this.saveUsers(activeUsers);
+    safeFirestoreSetDoc(doc(db, 'users', restoredUser.id), restoredUser).catch(() => {});
+
+    return restoredUser;
   },
 
   // Punches
@@ -210,6 +347,10 @@ export const StorageService = {
 
     const hash = generatePunchReceiptHash(employee.id, `${today}T${timeStr}`, punchType, store.code);
 
+    const todaySchedule = this.getSchedules().find((s) => s.employeeId === employee.id && s.date === today);
+    const effectiveShiftStart = todaySchedule?.shiftStart || employee.defaultShiftStart || '08:00';
+    const effectiveShiftEnd = todaySchedule?.shiftEnd || employee.defaultShiftEnd || '16:20';
+
     const record: PunchRecord = existing ?? {
       id: `punch-${employee.id}-${today}-${Date.now()}`,
       employeeId: employee.id,
@@ -218,11 +359,11 @@ export const StorageService = {
       lunchStart: null,
       lunchEnd: null,
       exit: null,
-      scheduledStart: employee.defaultShiftStart,
-      scheduledEnd: employee.defaultShiftEnd,
+      scheduledStart: effectiveShiftStart,
+      scheduledEnd: effectiveShiftEnd,
       scheduledLunchMin: employee.lunchDurationMin,
       workedMinutes: 0,
-      expectedMinutes: calculateExpectedMinutes(employee.defaultShiftStart, employee.defaultShiftEnd, employee.lunchDurationMin),
+      expectedMinutes: calculateExpectedMinutes(effectiveShiftStart, effectiveShiftEnd, employee.lunchDurationMin),
       delayMinutes: 0,
       extraMinutes: 0,
       adherencePercentage: 100,
@@ -240,13 +381,25 @@ export const StorageService = {
     let statusMsg = '';
 
     if (punchType === 'entry') {
-      record.entry = timeStr;
-      record.hashReceipt = hash;
-      statusMsg = 'Início de jornada registrado com sucesso!';
-      
       const schedStartMins = timeToMinutes(record.scheduledStart);
       const actualStartMins = timeToMinutes(timeStr.slice(0, 5));
       const diff = actualStartMins - schedStartMins;
+
+      // Limitador de entrada: só pode bater com no máximo 5 minutos de antecedência (a partir de schedStartMins - 5)
+      // Cargo de confiança ou Dono é isento. Almoço e saída não têm restrição.
+      if (!customTime && !employee.exemptFromPunchClock && actualStartMins < schedStartMins - 5) {
+        const allowedMin = Math.max(0, schedStartMins - 5);
+        const allowedH = Math.floor(allowedMin / 60).toString().padStart(2, '0');
+        const allowedM = (allowedMin % 60).toString().padStart(2, '0');
+        return {
+          punch: record,
+          message: `Horário bloqueado: Entrada agendada para ${record.scheduledStart}. O ponto só é liberado a partir das ${allowedH}:${allowedM} (5 min de antecedência).`
+        };
+      }
+
+      record.entry = timeStr;
+      record.hashReceipt = hash;
+      statusMsg = 'Início de jornada registrado com sucesso!';
       
       if (diff > 10) {
         record.delayMinutes = diff;
@@ -291,7 +444,7 @@ export const StorageService = {
     this.savePunches(punches);
 
     // Sync to Firestore
-    setDoc(doc(db, 'punches', record.id), record).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'punches', record.id), record).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `punches/${record.id}`)
     );
 
@@ -323,7 +476,7 @@ export const StorageService = {
     list.push(day);
     this.saveSchedules(list);
     // Sync to Firestore
-    setDoc(doc(db, 'schedules', day.id), day).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'schedules', day.id), day).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `schedules/${day.id}`)
     );
   },
@@ -410,7 +563,7 @@ export const StorageService = {
 
     // Sync generated batch
     generated.forEach((sch) => {
-      setDoc(doc(db, 'schedules', sch.id), sch).catch((err) =>
+      safeFirestoreSetDoc(doc(db, 'schedules', sch.id), sch).catch((err) =>
         handleFirestoreError(err, OperationType.WRITE, `schedules/${sch.id}`)
       );
     });
@@ -431,7 +584,7 @@ export const StorageService = {
     this.saveOccurrences(list);
 
     // Sync to Firestore
-    setDoc(doc(db, 'occurrences', occ.id), occ).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'occurrences', occ.id), occ).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `occurrences/${occ.id}`)
     );
 
@@ -472,16 +625,45 @@ export const StorageService = {
       }
     }
     this.savePunches(punches);
-    setDoc(doc(db, 'punches', punch.id), punch).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'punches', punch.id), punch).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `punches/${punch.id}`)
     );
+
+    // Sincroniza diretamente com a escala (schedules) para o colaborador ver imediatamente
+    if (occ.type === 'dia_extra' || occ.type === 'folga') {
+      const user = this.getUsers().find((u) => u.id === occ.employeeId);
+      if (user) {
+        const schs = this.getSchedules();
+        let sch = schs.find((s) => s.employeeId === occ.employeeId && s.date === occ.date);
+        if (!sch) {
+          sch = {
+            id: `sch-occ-${occ.employeeId}-${occ.date}`,
+            employeeId: occ.employeeId,
+            date: occ.date,
+            shiftStart: user.defaultShiftStart,
+            shiftEnd: user.defaultShiftEnd,
+            isOffDay: occ.type === 'folga',
+            isExtraDay: occ.type === 'dia_extra',
+            scheduleType: user.scheduleType,
+            notes: occ.reason
+          };
+          schs.push(sch);
+        } else {
+          sch.isOffDay = occ.type === 'folga';
+          sch.isExtraDay = occ.type === 'dia_extra';
+          sch.notes = occ.reason;
+        }
+        this.saveSchedules(schs);
+        safeFirestoreSetDoc(doc(db, 'schedules', sch.id), sch).catch(() => {});
+      }
+    }
   },
   updateOccurrence(updatedOcc: OccurrenceRecord): void {
     const list = this.getOccurrences().map((o) => (o.id === updatedOcc.id ? updatedOcc : o));
     this.saveOccurrences(list);
 
     // Sync to Firestore
-    setDoc(doc(db, 'occurrences', updatedOcc.id), updatedOcc).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'occurrences', updatedOcc.id), updatedOcc).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `occurrences/${updatedOcc.id}`)
     );
 
@@ -495,18 +677,43 @@ export const StorageService = {
                      updatedOcc.type === 'dia_extra' ? 'dia_extra' : 'abono';
       punch.notes = updatedOcc.reason;
       this.savePunches(punches);
-      setDoc(doc(db, 'punches', punch.id), punch).catch((err) =>
+      safeFirestoreSetDoc(doc(db, 'punches', punch.id), punch).catch((err) =>
         handleFirestoreError(err, OperationType.WRITE, `punches/${punch.id}`)
       );
     }
+
+    // Sync directly to schedule day
+    const schs = this.getSchedules();
+    const sch = schs.find((s) => s.employeeId === updatedOcc.employeeId && s.date === updatedOcc.date);
+    if (sch) {
+      sch.isOffDay = updatedOcc.type === 'folga';
+      sch.isExtraDay = updatedOcc.type === 'dia_extra';
+      sch.notes = updatedOcc.reason;
+      this.saveSchedules(schs);
+      safeFirestoreSetDoc(doc(db, 'schedules', sch.id), sch).catch(() => {});
+    }
   },
   deleteOccurrence(occId: string): void {
+    const occ = this.getOccurrences().find((o) => o.id === occId);
     const list = this.getOccurrences().filter((o) => o.id !== occId);
     this.saveOccurrences(list);
 
     deleteDoc(doc(db, 'occurrences', occId)).catch((err) =>
       handleFirestoreError(err, OperationType.DELETE, `occurrences/${occId}`)
     );
+
+    // If occurrence was folga or dia extra, restore schedule day
+    if (occ && (occ.type === 'folga' || occ.type === 'dia_extra')) {
+      const schs = this.getSchedules();
+      const sch = schs.find((s) => s.employeeId === occ.employeeId && s.date === occ.date);
+      if (sch) {
+        sch.isOffDay = false;
+        sch.isExtraDay = false;
+        sch.notes = 'Escala Padrão Regular';
+        this.saveSchedules(schs);
+        safeFirestoreSetDoc(doc(db, 'schedules', sch.id), sch).catch(() => {});
+      }
+    }
   },
 
   // Certificates
@@ -521,7 +728,7 @@ export const StorageService = {
     certs.unshift(cert);
     this.saveCertificates(certs);
 
-    setDoc(doc(db, 'certificates', cert.id), cert).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'certificates', cert.id), cert).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `certificates/${cert.id}`)
     );
 
@@ -558,7 +765,7 @@ export const StorageService = {
     const certs = this.getCertificates().map((c) => (c.id === updatedCert.id ? updatedCert : c));
     this.saveCertificates(certs);
 
-    setDoc(doc(db, 'certificates', updatedCert.id), updatedCert).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'certificates', updatedCert.id), updatedCert).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `certificates/${updatedCert.id}`)
     );
 
@@ -603,7 +810,7 @@ export const StorageService = {
     list.unshift(notif);
     this.saveNotifications(list);
 
-    setDoc(doc(db, 'notifications', notif.id), notif).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'notifications', notif.id), notif).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`)
     );
   },
@@ -612,7 +819,7 @@ export const StorageService = {
     this.saveNotifications(list);
     const target = list.find((n) => n.id === id);
     if (target) {
-      setDoc(doc(db, 'notifications', target.id), target).catch((err) =>
+      safeFirestoreSetDoc(doc(db, 'notifications', target.id), target).catch((err) =>
         handleFirestoreError(err, OperationType.WRITE, `notifications/${target.id}`)
       );
     }
@@ -621,7 +828,7 @@ export const StorageService = {
     const list = this.getNotifications().map((n) => ({ ...n, read: true }));
     this.saveNotifications(list);
     list.forEach((notif) => {
-      setDoc(doc(db, 'notifications', notif.id), notif).catch((err) =>
+      safeFirestoreSetDoc(doc(db, 'notifications', notif.id), notif).catch((err) =>
         handleFirestoreError(err, OperationType.WRITE, `notifications/${notif.id}`)
       );
     });
@@ -634,6 +841,13 @@ export const StorageService = {
     INITIAL_PAYROLL_CONFIGS.forEach((initConfig) => {
       if (!list.some((c) => c.employeeId === initConfig.employeeId)) {
         list.push(initConfig);
+        modified = true;
+      }
+    });
+    // Ensure user-admin has payrollStoreId = store-botafogo
+    list.forEach((c) => {
+      if (c.employeeId === 'user-admin' && (!c.payrollStoreId || c.payrollStoreId !== 'store-botafogo')) {
+        c.payrollStoreId = 'store-botafogo';
         modified = true;
       }
     });
@@ -660,7 +874,7 @@ export const StorageService = {
     this.savePayrollConfigs(list);
 
     // Sync to Firestore
-    setDoc(doc(db, 'payrollConfigs', config.employeeId), config).catch((err) =>
+    safeFirestoreSetDoc(doc(db, 'payrollConfigs', config.employeeId), config).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `payrollConfigs/${config.employeeId}`)
     );
   },
@@ -674,13 +888,13 @@ export const StorageService = {
     if (!cloudInitKey) {
       // Seed stores and initial users to Firestore
       INITIAL_STORES.forEach((s) => {
-        setDoc(doc(db, 'stores', s.id), s).catch(() => {});
+        safeFirestoreSetDoc(doc(db, 'stores', s.id), s).catch(() => {});
       });
       INITIAL_USERS.forEach((u) => {
-        setDoc(doc(db, 'users', u.id), u).catch(() => {});
+        safeFirestoreSetDoc(doc(db, 'users', u.id), u).catch(() => {});
       });
       INITIAL_PUNCHES.forEach((p) => {
-        setDoc(doc(db, 'punches', p.id), p).catch(() => {});
+        safeFirestoreSetDoc(doc(db, 'punches', p.id), p).catch(() => {});
       });
       localStorage.setItem(STORAGE_KEYS.CLOUD_INITIALIZED, 'true');
     }
@@ -698,7 +912,7 @@ export const StorageService = {
             onDataChange();
           } else {
             INITIAL_STORES.forEach((s) => {
-              setDoc(doc(db, 'stores', s.id), s).catch(() => {});
+              safeFirestoreSetDoc(doc(db, 'stores', s.id), s).catch(() => {});
             });
           }
         },
@@ -714,12 +928,21 @@ export const StorageService = {
         collection(db, 'users'),
         (snapshot) => {
           if (!snapshot.empty) {
-            const list = snapshot.docs.map((d) => d.data() as UserAccount);
-            this.saveUsers(list);
-            onDataChange();
+            const purgedIds = new Set([
+              'user-marcos', 'user-fernando', 'user-carlos', 'user-juliana',
+              'user-rafael', 'user-camila', 'user-maria', 'user-lucas',
+              'user-gabriel', 'user-beatriz'
+            ]);
+            const list = snapshot.docs
+              .map((d) => d.data() as UserAccount)
+              .filter((u) => !purgedIds.has(u.id));
+            if (list.length > 0) {
+              this.saveUsers(list);
+              onDataChange();
+            }
           } else {
             INITIAL_USERS.forEach((u) => {
-              setDoc(doc(db, 'users', u.id), u).catch(() => {});
+              safeFirestoreSetDoc(doc(db, 'users', u.id), u).catch(() => {});
             });
           }
         },

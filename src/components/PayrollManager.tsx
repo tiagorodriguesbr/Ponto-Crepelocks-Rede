@@ -26,7 +26,8 @@ import {
   Lock,
   ChevronDown,
   ChevronRight,
-  ArrowUpDown
+  ArrowUpDown,
+  Globe
 } from 'lucide-react';
 import {
   UserAccount,
@@ -37,7 +38,12 @@ import {
   Role
 } from '../types';
 import { StorageService } from '../services/storage';
-import { PayrollCalculatorService } from '../services/payrollCalculator';
+import {
+  PayrollCalculatorService,
+  INSS_BRACKETS_2026,
+  INSS_TETO_SALARIO,
+  INSS_TETO_CONTRIBUICAO
+} from '../services/payrollCalculator';
 import { canDownloadDocuments } from '../services/rolePermissions';
 import { jsPDF } from 'jspdf';
 
@@ -79,6 +85,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
   const [viewingHolerite, setViewingHolerite] = useState<PayrollCalculationResult | null>(null);
 
   // Form state for modal editor
+  const [formPayrollStoreId, setFormPayrollStoreId] = useState<string>('');
   const [formBaseSalary, setFormBaseSalary] = useState<string>('0');
   const [formBonusGratification, setFormBonusGratification] = useState<string>('0');
   const [formInsalubridadePct, setFormInsalubridadePct] = useState<string>('0');
@@ -98,41 +105,31 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
   const [formNotes, setFormNotes] = useState<string>('');
 
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [showInssTable, setShowInssTable] = useState<boolean>(true);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // Filtered users list
-  const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      if (selectedStore !== 'all' && u.storeId !== selectedStore && u.storeId !== 'all') return false;
-      if (roleFilter !== 'all' && u.role !== roleFilter) return false;
-      if (searchTerm.trim()) {
-        const term = searchTerm.toLowerCase();
-        const matchesName = u.name.toLowerCase().includes(term);
-        const matchesEmail = u.email.toLowerCase().includes(term);
-        const matchesCargo = u.positionTitle?.toLowerCase().includes(term);
-        const matchesCpf = u.cpf?.toLowerCase().includes(term);
-        if (!matchesName && !matchesEmail && !matchesCargo && !matchesCpf) return false;
-      }
-      return true;
-    });
-  }, [users, selectedStore, roleFilter, searchTerm]);
+  // Helper to determine the effective payroll store for an employee
+  const getEffectivePayrollStoreId = (user: UserAccount, cfg?: PayrollEmployeeConfig): string => {
+    return cfg?.payrollStoreId || user.payrollStoreId || (user.storeId !== 'all' ? user.storeId : stores.find((s) => s.id === 'store-botafogo')?.id || stores[0]?.id || 'store-1');
+  };
 
-  // Compute payroll result for each filtered employee
-  const payrollResults = useMemo<PayrollCalculationResult[]>(() => {
-    return filteredUsers.map((user) => {
+  // Compute payroll result for ALL employees across the entire company
+  const allPayrollResults = useMemo<PayrollCalculationResult[]>(() => {
+    return users.map((user) => {
       const config = configs[user.id];
-      const store = stores.find((s) => s.id === user.storeId);
+      const effectiveStoreId = getEffectivePayrollStoreId(user, config);
+      const store = stores.find((s) => s.id === effectiveStoreId) || stores[0];
       return PayrollCalculatorService.calculatePayroll(user, config, store, punches, selectedMonth);
     });
-  }, [filteredUsers, configs, stores, punches, selectedMonth]);
+  }, [users, configs, stores, punches, selectedMonth]);
 
-  // Grand totals of the filtered payroll
-  const grandTotals = useMemo(() => {
-    return payrollResults.reduce(
+  // Grand totals of the whole company (Consolidado Rede)
+  const networkTotals = useMemo(() => {
+    return allPayrollResults.reduce(
       (acc, r) => {
         acc.totalBase += r.baseSalary;
         acc.totalBonus += r.bonusGratification;
@@ -163,13 +160,109 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
         totalFgts: 0
       }
     );
-  }, [payrollResults]);
+  }, [allPayrollResults]);
+
+  // Totais separados por loja (Breakdown individual por loja)
+  const storePayrollSummaries = useMemo(() => {
+    return stores.map((store) => {
+      const storeResults = allPayrollResults.filter((r) => r.payrollStoreId === store.id);
+      const totals = storeResults.reduce(
+        (acc, r) => {
+          acc.totalBase += r.baseSalary;
+          acc.totalBonus += r.bonusGratification;
+          acc.totalExtras += r.extraHoursPay;
+          acc.totalGross += r.totalGross;
+          acc.totalInss += r.inssDiscount;
+          acc.totalIrpf += r.irpfDiscount;
+          acc.totalVt += r.vtDiscount;
+          acc.totalVrVa += r.vrVaDiscount;
+          acc.totalOther += r.otherDiscounts;
+          acc.totalDiscounts += r.totalDiscounts;
+          acc.totalNet += r.netSalary;
+          acc.totalFgts += r.fgtsEmployer;
+          return acc;
+        },
+        {
+          totalBase: 0,
+          totalBonus: 0,
+          totalExtras: 0,
+          totalGross: 0,
+          totalInss: 0,
+          totalIrpf: 0,
+          totalVt: 0,
+          totalVrVa: 0,
+          totalOther: 0,
+          totalDiscounts: 0,
+          totalNet: 0,
+          totalFgts: 0
+        }
+      );
+      return {
+        store,
+        count: storeResults.length,
+        results: storeResults,
+        ...totals
+      };
+    });
+  }, [stores, allPayrollResults]);
+
+  // Filtered payroll results for display in table based on selectedStore, role, search
+  const filteredPayrollResults = useMemo(() => {
+    return allPayrollResults.filter((r) => {
+      const u = users.find((user) => user.id === r.employeeId);
+      if (!u) return false;
+
+      // Filter by store: match strictly the employee's payrollStoreId
+      if (selectedStore !== 'all' && r.payrollStoreId !== selectedStore) {
+        return false;
+      }
+      if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        const matchesName = u.name.toLowerCase().includes(term);
+        const matchesEmail = u.email.toLowerCase().includes(term);
+        const matchesCargo = u.positionTitle?.toLowerCase().includes(term);
+        const matchesCpf = u.cpf?.toLowerCase().includes(term);
+        if (!matchesName && !matchesEmail && !matchesCargo && !matchesCpf) return false;
+      }
+      return true;
+    });
+  }, [allPayrollResults, users, selectedStore, roleFilter, searchTerm]);
+
+  // Current active totals to display on the 4 primary KPI cards
+  const activeTotals = useMemo(() => {
+    if (selectedStore === 'all') {
+      return {
+        ...networkTotals,
+        employeeCount: allPayrollResults.length,
+        title: 'Toda a Rede (Consolidado)',
+        subtitle: 'Soma de todas as lojas e colaboradores da rede Crepelocks'
+      };
+    }
+    const currentStoreSummary = storePayrollSummaries.find((s) => s.store.id === selectedStore);
+    if (currentStoreSummary) {
+      return {
+        ...currentStoreSummary,
+        employeeCount: currentStoreSummary.count,
+        title: `${currentStoreSummary.store.name} (${currentStoreSummary.store.code})`,
+        subtitle: `CNPJ: ${currentStoreSummary.store.cnpj || 'Não cadastrado'} • Folha exclusiva desta unidade`
+      };
+    }
+    return {
+      ...networkTotals,
+      employeeCount: allPayrollResults.length,
+      title: 'Toda a Rede',
+      subtitle: ''
+    };
+  }, [selectedStore, networkTotals, allPayrollResults.length, storePayrollSummaries]);
 
   // Open modal editor for employee
   const handleOpenEdit = (user: UserAccount) => {
     const cfg = configs[user.id];
     setEditingEmployee(user);
 
+    const effectiveStoreId = getEffectivePayrollStoreId(user, cfg);
+    setFormPayrollStoreId(effectiveStoreId);
     setFormBaseSalary(cfg?.baseSalary !== undefined ? String(cfg.baseSalary) : (user.role === 'dono' ? '10000' : '2000'));
     setFormBonusGratification(cfg?.bonusGratification !== undefined ? String(cfg.bonusGratification) : '0');
     setFormInsalubridadePct(cfg?.insalubridadePct !== undefined ? String(cfg.insalubridadePct) : '0');
@@ -236,6 +329,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
 
     const updatedConfig: PayrollEmployeeConfig = {
       employeeId: editingEmployee.id,
+      payrollStoreId: formPayrollStoreId,
       monthYear: selectedMonth,
       baseSalary: parseNum(formBaseSalary),
       bonusGratification: parseNum(formBonusGratification),
@@ -259,6 +353,14 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
 
     setConfigs((prev) => ({ ...prev, [editingEmployee.id]: updatedConfig }));
     StorageService.updatePayrollConfig(updatedConfig);
+
+    // Sync payrollStoreId on user account as well
+    const updatedUser: UserAccount = {
+      ...editingEmployee,
+      payrollStoreId: formPayrollStoreId
+    };
+    StorageService.updateUser(updatedUser);
+
     onDataUpdated();
     setEditingEmployee(null);
     showToast(`Configuração de folha de ${editingEmployee.name} salva com sucesso!`);
@@ -291,7 +393,9 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
 
     const rows: string[] = [headers.join(';')];
 
-    payrollResults.forEach((r) => {
+    const targetList = filteredPayrollResults.length > 0 ? filteredPayrollResults : allPayrollResults;
+
+    targetList.forEach((r) => {
       const row = [
         r.employeeId,
         `"${r.employeeName}"`,
@@ -331,13 +435,13 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
       URL.revokeObjectURL(url);
     }, 150);
 
-    showToast(`Planilha CSV da folha gerada com ${payrollResults.length} registros!`);
+    showToast(`Planilha CSV da folha gerada com ${targetList.length} registros!`);
   };
 
   // Generate Official Holerite / Contracheque PDF
   const handleGenerateHoleritePdf = (res: PayrollCalculationResult) => {
     const emp = users.find((u) => u.id === res.employeeId);
-    const store = stores.find((s) => s.id === emp?.storeId);
+    const store = stores.find((s) => s.id === res.payrollStoreId) || stores.find((s) => s.id === emp?.storeId) || stores[0];
 
     const doc = new jsPDF({
       orientation: 'portrait',
@@ -369,17 +473,20 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'bold');
     doc.text(`Empresa: CREPELOCKS ALIMENTAÇÃO LTDA`, 18, 44);
-    doc.text(`CNPJ: 45.981.234/0001-89`, 120, 44);
+    doc.text(`CNPJ: ${store?.cnpj || '45.892.120/0001-83'}`, 120, 44);
 
     doc.text(`Colaborador(a): ${res.employeeName.toUpperCase()}`, 18, 51);
     doc.text(`CPF: ${emp?.cpf || '000.000.000-00'}`, 120, 51);
 
     doc.setFont('helvetica', 'normal');
     doc.text(`Cargo / Função: ${res.positionTitle} (${res.role === 'dono' ? 'Pró-Labore Dono' : 'CLT'})`, 18, 58);
-    doc.text(`Lotação: ${store?.name || 'Sede Administrativa'}`, 120, 58);
+    doc.text(`Lotação / Pagamento: ${store?.name || 'Sede Administrativa'} (${store?.code || 'LJ'})`, 120, 58);
 
-    doc.text(`Admissão: ${emp?.admissionDate || '2023-01-01'}`, 18, 64);
-    doc.text(`Banco: Itaú Unibanco (0341) | Conta Corrente Salário`, 120, 64);
+    const contractDesc = emp?.contractType === 'experiencia'
+      ? `Contrato de Experiência (${emp.probationDaysInitial || 45}d${emp.probationExtended ? ` + ${emp.probationDaysExtension || 45}d` : ''})`
+      : 'Contrato por Prazo Indeterminado';
+    doc.text(`Admissão: ${emp?.admissionDate || 'Não informada'}`, 18, 64);
+    doc.text(`Vínculo: ${contractDesc}`, 120, 64);
 
     // Table Header
     doc.setFillColor(30, 41, 59);
@@ -550,7 +657,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
 
     doc.text(`Base Cálc. IRRF: R$ ${Math.max(0, res.totalGross - res.inssDiscount).toFixed(2)}`, 18, baseCalcY + 10);
     doc.text(`Faixa IRRF: ${res.irpfEffectivePct}%`, 60, baseCalcY + 10);
-    doc.text(`Autenticação Bancária: ${res.employeeId.slice(0, 8).toUpperCase()}-${Date.now().toString(16).toUpperCase()}`, 110, baseCalcY + 10);
+    doc.text(`Código de Autenticação: ${res.employeeId.slice(0, 8).toUpperCase()}-${Date.now().toString(16).toUpperCase()}`, 110, baseCalcY + 10);
 
     // Signatures
     const sigY = baseCalcY + 24;
@@ -565,7 +672,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
 
     doc.setFontSize(6.5);
     doc.setTextColor(148, 163, 184);
-    doc.text('DECLARO TER RECEBIDO A IMPORTÂNCIA LÍQUIDA ACIMA DISCRIMINADA DISPOSTA EM CONTA BANCÁRIA.', 30, sigY + 11);
+    doc.text('DECLARO TER RECEBIDO A IMPORTÂNCIA LÍQUIDA ACIMA DISCRIMINADA.', 40, sigY + 11);
 
     doc.save(`holerite_${res.employeeName.toLowerCase().replace(/\s+/g, '_')}_${res.monthYear}.pdf`);
     showToast(`Holerite de ${res.employeeName} gerado com sucesso!`);
@@ -627,59 +734,318 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* SELETOR RÁPIDO DE LOJAS PARA A FOLHA */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Visualizar Folha por Loja ou Toda a Rede:</span>
+          </span>
+          <span className="text-[11px] text-zinc-400">
+            {selectedStore === 'all' ? 'Exibindo Consolidado da Rede' : `Filtrando por ${activeTotals.title}`}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setSelectedStore('all')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm ${
+              selectedStore === 'all'
+                ? 'bg-emerald-600 text-white shadow-emerald-950/40 ring-2 ring-emerald-400'
+                : 'bg-card/70 hover:bg-muted text-muted-foreground hover:text-foreground border border-border'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>Toda a Rede (Consolidado)</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/30 font-mono text-emerald-200">
+              {allPayrollResults.length} colab.
+            </span>
+          </button>
+
+          {stores.map((st) => {
+            const count = allPayrollResults.filter((r) => r.payrollStoreId === st.id).length;
+            const isSelected = selectedStore === st.id;
+            return (
+              <button
+                key={st.id}
+                onClick={() => setSelectedStore(st.id)}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm ${
+                  isSelected
+                    ? 'bg-emerald-600 text-white shadow-emerald-950/40 ring-2 ring-emerald-400'
+                    : 'bg-card/70 hover:bg-muted text-muted-foreground hover:text-foreground border border-border'
+                }`}
+              >
+                <Building2 className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-emerald-400'}`} />
+                <span>{st.name} ({st.code})</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${isSelected ? 'bg-black/30 text-white' : 'bg-muted text-muted-foreground'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Scope Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-950/20 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-bold text-foreground">
+            Folha de Pagamento Ativa: <strong className="text-emerald-400">{activeTotals.title}</strong>
+          </span>
+          <span className="text-muted-foreground hidden sm:inline">|</span>
+          <span className="text-muted-foreground">{activeTotals.subtitle}</span>
+        </div>
+        {selectedStore !== 'all' && (
+          <button
+            onClick={() => setSelectedStore('all')}
+            className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 underline underline-offset-2 flex items-center gap-1 self-start sm:self-auto"
+          >
+            ← Voltar para Toda a Rede
+          </button>
+        )}
+      </div>
+
+      {/* KPI Cards (Atualizados dinamicamente pela loja selecionada) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="p-4 rounded-xl border border-border bg-card/40 backdrop-blur flex flex-col justify-between">
+        <div className="p-4 rounded-xl border border-border bg-card/60 backdrop-blur flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
             <span>Total Bruto da Folha</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-2 text-xl font-black text-foreground">
-            R$ {grandTotals.totalGross.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {activeTotals.totalGross.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
-            Base R$ {grandTotals.totalBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} + R$ {grandTotals.totalBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} grat.
+            Base R$ {activeTotals.totalBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} + R$ {activeTotals.totalBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} grat.
           </div>
         </div>
 
-        <div className="p-4 rounded-xl border border-border bg-card/40 backdrop-blur flex flex-col justify-between">
+        <div className="p-4 rounded-xl border border-border bg-card/60 backdrop-blur flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
             <span>Total de Descontos</span>
             <Percent className="w-4 h-4 text-rose-400" />
           </div>
           <div className="mt-2 text-xl font-black text-rose-400">
-            R$ {grandTotals.totalDiscounts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {activeTotals.totalDiscounts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
-            INSS R$ {grandTotals.totalInss.toFixed(2)} • IRPF R$ {grandTotals.totalIrpf.toFixed(2)}
+            INSS R$ {activeTotals.totalInss.toFixed(2)} • IRPF R$ {activeTotals.totalIrpf.toFixed(2)}
           </div>
         </div>
 
-        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 backdrop-blur flex flex-col justify-between">
+        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 backdrop-blur flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-emerald-300 text-xs font-medium">
             <span>Líquido a Pagar</span>
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-2 text-xl font-black text-emerald-400">
-            R$ {grandTotals.totalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {activeTotals.totalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
           <div className="mt-1 text-[11px] text-emerald-300/70">
-            {payrollResults.length} colaboradores na folha
+            {activeTotals.employeeCount} colaboradores na folha
           </div>
         </div>
 
-        <div className="p-4 rounded-xl border border-border bg-card/40 backdrop-blur flex flex-col justify-between">
+        <div className="p-4 rounded-xl border border-border bg-card/60 backdrop-blur flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
             <span>FGTS Patronal (8%)</span>
             <Shield className="w-4 h-4 text-blue-400" />
           </div>
           <div className="mt-2 text-xl font-black text-blue-400">
-            R$ {grandTotals.totalFgts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {activeTotals.totalFgts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
             Custo patronal informativo
           </div>
         </div>
+      </div>
+
+      {/* SEÇÃO SOLICITADA: TOTAIS E INFORMAÇÕES DA FOLHA SEPARADAS POR LOJA */}
+      <div className="p-5 rounded-2xl border border-border bg-card/40 backdrop-blur-md space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/80 pb-3">
+          <div>
+            <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-emerald-400" />
+              <span>Totais da Folha Separados por Loja (Comparativo da Rede)</span>
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Valores individualizados por loja para conferência contábil, holerites e centros de custos.
+            </p>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {stores.length} Lojas Operacionais Cadastradas
+          </div>
+        </div>
+
+        {/* Grid de Cards com as informações separadas por cada loja */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {storePayrollSummaries.map((summary) => {
+            const isStoreActive = selectedStore === summary.store.id;
+            return (
+              <div
+                key={summary.store.id}
+                className={`p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 shadow-sm ${
+                  isStoreActive
+                    ? 'border-emerald-500 bg-emerald-950/25 ring-2 ring-emerald-500/30'
+                    : 'border-border bg-card/60 hover:border-zinc-600'
+                }`}
+              >
+                {/* Store Header */}
+                <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-border/60">
+                  <div>
+                    <h4 className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span className="truncate max-w-[170px]" title={summary.store.name}>
+                        {summary.store.name}
+                      </span>
+                    </h4>
+                    <span className="text-[10px] text-muted-foreground block mt-0.5 font-mono">
+                      Código: {summary.store.code} {summary.store.cnpj ? `• CNPJ: ${summary.store.cnpj}` : ''}
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 shrink-0 border border-emerald-500/20">
+                    {summary.count} {summary.count === 1 ? 'colab.' : 'colabs.'}
+                  </span>
+                </div>
+
+                {/* As 4 informações exatamente como solicitadas, separadas por loja */}
+                <div className="space-y-2 text-xs">
+                  {/* Total Bruto */}
+                  <div className="p-2 rounded-lg bg-muted/30 border border-border/50">
+                    <span className="text-[10px] text-muted-foreground block font-medium">Total Bruto da Folha</span>
+                    <span className="font-black text-sm text-foreground block font-mono">
+                      R$ {summary.totalGross.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground block truncate">
+                      Base R$ {summary.totalBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} + R$ {summary.totalBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} grat.
+                    </span>
+                  </div>
+
+                  {/* Total de Descontos */}
+                  <div className="p-2 rounded-lg bg-rose-950/15 border border-rose-500/20">
+                    <span className="text-[10px] text-rose-300 block font-medium">Total de Descontos</span>
+                    <span className="font-black text-sm text-rose-400 block font-mono">
+                      R$ {summary.totalDiscounts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-[10px] text-rose-300/80 block">
+                      INSS R$ {summary.totalInss.toFixed(2)} • IRPF R$ {summary.totalIrpf.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Líquido a Pagar */}
+                  <div className="p-2 rounded-lg bg-emerald-950/20 border border-emerald-500/30">
+                    <span className="text-[10px] text-emerald-300 block font-medium">Líquido a Pagar</span>
+                    <span className="font-black text-base text-emerald-400 block font-mono">
+                      R$ {summary.totalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-[10px] text-emerald-300/70 block">
+                      {summary.count} colaboradores na folha
+                    </span>
+                  </div>
+
+                  {/* FGTS Patronal */}
+                  <div className="p-2 rounded-lg bg-blue-950/15 border border-blue-500/20">
+                    <span className="text-[10px] text-blue-300 block font-medium">FGTS Patronal (8%)</span>
+                    <span className="font-black text-sm text-blue-400 block font-mono">
+                      R$ {summary.totalFgts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground block">
+                      Custo patronal informativo
+                    </span>
+                  </div>
+                </div>
+
+                {/* Ação rápida para filtrar */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedStore(summary.store.id)}
+                  className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+                    isStoreActive
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700'
+                  }`}
+                >
+                  <Building2 className="w-3 h-3 text-emerald-400" />
+                  <span>{isStoreActive ? '✓ Visualizando esta Loja' : 'Filtrar Folha Desta Loja'}</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* TABELA PROGRESSIVA OFICIAL DO INSS (INFORMATIVO & FAIXAS) */}
+      <div className="border border-border rounded-xl bg-card/50 overflow-hidden shadow-sm">
+        <div
+          className="p-3.5 bg-muted/40 flex items-center justify-between cursor-pointer hover:bg-muted/60 transition-colors"
+          onClick={() => setShowInssTable(!showInssTable)}
+        >
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-bold text-foreground">
+              Tabela Progressiva Oficial de Contribuição do INSS (Faixas & Parcelas a Deduzir)
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30">
+              Vigente
+            </span>
+          </div>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground text-xs flex items-center gap-1 font-semibold"
+          >
+            <span>{showInssTable ? 'Recolher' : 'Exibir Tabela'}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showInssTable ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+
+        {showInssTable && (
+          <div className="p-4 border-t border-border space-y-3 text-xs">
+            <p className="text-[11px] text-muted-foreground">
+              O sistema calcula o INSS automaticamente conforme a legislação oficial, aplicando alíquotas progressivas e deduzindo as parcelas correspondentes:
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse border border-border rounded-lg overflow-hidden">
+                <thead className="bg-muted/70 text-muted-foreground font-semibold">
+                  <tr>
+                    <th className="py-2 px-3 border-b border-border">Salário de Contribuição</th>
+                    <th className="py-2 px-3 text-center border-b border-border">Alíquota (%)</th>
+                    <th className="py-2 px-3 text-right border-b border-border">Parcela a Deduzir</th>
+                    <th className="py-2 px-3 text-right border-b border-border">Contribuição Máxima na Faixa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border font-mono text-[11px]">
+                  {INSS_BRACKETS_2026.map((bracket, idx) => (
+                    <tr key={idx} className="hover:bg-muted/20">
+                      <td className="py-2 px-3 font-sans font-semibold text-foreground">{bracket.rangeLabel}</td>
+                      <td className="py-2 px-3 text-center font-bold text-emerald-400">{bracket.aliquotaPct.toFixed(1)}%</td>
+                      <td className="py-2 px-3 text-right text-rose-400 font-semibold">
+                        {bracket.deducao > 0 ? `R$ ${bracket.deducao.toFixed(2)}` : 'R$ 0,00'}
+                      </td>
+                      <td className="py-2 px-3 text-right text-muted-foreground">
+                        R$ {((bracket.max * (bracket.aliquotaPct / 100)) - bracket.deducao).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-muted/30 font-bold">
+                    <td className="py-2 px-3 font-sans text-amber-300">Acima de R$ 8.475,55 (Teto Previdenciário)</td>
+                    <td className="py-2 px-3 text-center text-amber-300">Teto Máximo (14%)</td>
+                    <td className="py-2 px-3 text-right text-amber-300">R$ 198,49</td>
+                    <td className="py-2 px-3 text-right text-amber-300 font-mono">
+                      R$ {INSS_TETO_CONTRIBUICAO.toFixed(2)} (Teto)
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                <strong>Cálculo Automático Ativo:</strong> Fórmula aplicada: <code className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-emerald-200">INSS = (Base × Alíquota) − Parcela a Deduzir</code> com limitação no teto máximo de R$ 988,09 para salários acima de R$ 8.475,55.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -709,10 +1075,10 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
               onChange={(e) => setSelectedStore(e.target.value)}
               className="px-3 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
-              <option value="all">Todas as Lojas & Sede</option>
+              <option value="all">Todas as Lojas & Sede (Consolidado)</option>
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} ({s.code})
+                  {s.name} ({s.code}) {s.cnpj ? `• CNPJ: ${s.cnpj}` : ''}
                 </option>
               ))}
             </select>
@@ -767,17 +1133,18 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {payrollResults.length === 0 ? (
+              {filteredPayrollResults.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="py-8 text-center text-muted-foreground text-xs">
                     Nenhum colaborador encontrado com os filtros selecionados.
                   </td>
                 </tr>
               ) : (
-                payrollResults.map((res) => {
+                filteredPayrollResults.map((res) => {
                   const emp = users.find((u) => u.id === res.employeeId);
                   const cfg = configs[res.employeeId];
                   const isOwner = res.role === 'dono';
+                  const isAllStores = emp?.hasAccessToAllStores || emp?.storeId === 'all' || isOwner;
 
                   return (
                     <tr
@@ -807,12 +1174,20 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
 
                       {/* Cargo / Loja */}
                       <td className="py-3 px-3">
-                        <span className="font-medium text-foreground block truncate max-w-[140px]" title={res.positionTitle}>
+                        <span className="font-medium text-foreground block truncate max-w-[150px]" title={res.positionTitle}>
                           {res.positionTitle}
                         </span>
-                        <span className="text-[10px] text-muted-foreground block truncate max-w-[140px]">
-                          {isOwner ? '👑 Diretor / Sócio' : res.storeName}
-                        </span>
+                        <div className="text-[10px] mt-0.5 space-y-0.5">
+                          {isAllStores ? (
+                            <span className="text-emerald-400 font-semibold block truncate max-w-[150px]">
+                              🌐 Rede • 💰 Folha: {res.storeName}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground block truncate max-w-[150px]">
+                              {res.storeName} ({res.storeCode})
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Salário Bruto (com input rápido direto) */}
@@ -981,35 +1356,35 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
               )}
             </tbody>
             {/* Total Row */}
-            {payrollResults.length > 0 && (
+            {filteredPayrollResults.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-border bg-muted/60 font-bold text-foreground">
                   <td colSpan={2} className="py-3.5 px-3.5 text-xs">
-                    TOTAL GERAL CONSOLIDADO ({payrollResults.length} Registros)
+                    TOTAL DA FOLHA: {activeTotals.title.toUpperCase()} ({filteredPayrollResults.length} Registros)
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-xs">
-                    R$ {grandTotals.totalBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {activeTotals.totalBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-xs text-emerald-400">
-                    R$ {grandTotals.totalBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {activeTotals.totalBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-xs text-rose-400">
-                    R$ {grandTotals.totalVt.toFixed(2)}
+                    R$ {activeTotals.totalVt.toFixed(2)}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-xs text-rose-400">
-                    R$ {grandTotals.totalVrVa.toFixed(2)}
+                    R$ {activeTotals.totalVrVa.toFixed(2)}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-xs text-rose-400">
-                    R$ {grandTotals.totalInss.toFixed(2)}
+                    R$ {activeTotals.totalInss.toFixed(2)}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-xs text-rose-400">
-                    R$ {grandTotals.totalIrpf.toFixed(2)}
+                    R$ {activeTotals.totalIrpf.toFixed(2)}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-xs text-rose-400">
-                    R$ {grandTotals.totalOther.toFixed(2)}
+                    R$ {activeTotals.totalOther.toFixed(2)}
                   </td>
                   <td className="py-3.5 px-3 text-right font-mono text-sm font-black text-emerald-400">
-                    R$ {grandTotals.totalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {activeTotals.totalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
                   <td></td>
                 </tr>
@@ -1042,6 +1417,31 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
             </div>
 
             <form onSubmit={handleSaveModal} className="mt-5 space-y-5 text-xs">
+              {/* Lotação da Folha / Loja de Pagamento */}
+              <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-950/15 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-blue-400 text-xs flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4" />
+                    <span>Loja de Pagamento do Contracheque / Lotação da Folha</span>
+                  </h4>
+                  <span className="text-[10px] text-blue-300 font-mono">Contracheque</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Mesmo que os gerentes, diretores ou o dono sejam vinculados a todas as lojas, selecione a loja específica pela qual receberá o salário e constará no holerite (Ex: <em>trabalha pra toda rede mas recebe por Botafogo</em>).
+                </p>
+                <select
+                  value={formPayrollStoreId}
+                  onChange={(e) => setFormPayrollStoreId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-xs font-semibold focus:ring-1 focus:ring-blue-500"
+                >
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      🏬 {s.name} ({s.code}) {s.cnpj ? `• CNPJ: ${s.cnpj}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Proventos / Salário & Gratificação */}
               <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-950/15 space-y-3">
                 <h4 className="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
@@ -1203,6 +1603,104 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
                       placeholder="Deixe em branco para tabela oficial"
                       className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-emerald-500"
                     />
+                  </div>
+                </div>
+
+                {/* Demonstração em Tempo Real da Faixa de INSS */}
+                <div className="p-3 rounded-lg border border-rose-500/20 bg-rose-950/20 space-y-1 text-[11px]">
+                  <div className="flex items-center justify-between font-bold text-rose-300">
+                    <span className="flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-rose-400" />
+                      Cálculo Oficial INSS (Progressivo 2026):
+                    </span>
+                    <span className="font-mono text-rose-400">
+                      {PayrollCalculatorService.getInssDetail(
+                        (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)
+                      ).rangeLabel}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-muted-foreground pt-1">
+                    <div>
+                      Base de Cálculo: <strong className="text-foreground">
+                        R$ {((parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)).toFixed(2)}
+                      </strong>
+                    </div>
+                    <div>
+                      Alíquota Faixa: <strong className="text-foreground">
+                        {PayrollCalculatorService.getInssDetail(
+                          (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)
+                        ).aliquotaPct}%
+                      </strong>
+                    </div>
+                    <div>
+                      Parcela a Deduzir: <strong className="text-foreground">
+                        R$ {PayrollCalculatorService.getInssDetail(
+                          (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)
+                        ).deducao.toFixed(2)}
+                      </strong>
+                    </div>
+                    <div>
+                      INSS Previsto: <strong className="text-rose-400 font-bold">
+                        R$ {PayrollCalculatorService.getInssDetail(
+                          (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)
+                        ).amount.toFixed(2)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Demonstração em Tempo Real da Faixa de IRPF (Isenção Vigente até R$ 5.000,00) */}
+                <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-950/20 space-y-1 text-[11px]">
+                  <div className="flex items-center justify-between font-bold text-blue-300">
+                    <span className="flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-blue-400" />
+                      Cálculo Oficial IRPF (Isenção até R$ 5.000,00):
+                    </span>
+                    <span className="font-mono text-emerald-400 font-bold">
+                      {PayrollCalculatorService.getIrpfDetail(
+                        (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0),
+                        PayrollCalculatorService.calculateCltInss((parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)).amount,
+                        Math.round(parseFloat(formDependents) || 0)
+                      ).rangeLabel}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-muted-foreground pt-1">
+                    <div>
+                      Base Tributável: <strong className="text-foreground">
+                        R$ {PayrollCalculatorService.getIrpfDetail(
+                          (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0),
+                          PayrollCalculatorService.calculateCltInss((parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)).amount,
+                          Math.round(parseFloat(formDependents) || 0)
+                        ).baseCalculo.toFixed(2)}
+                      </strong>
+                    </div>
+                    <div>
+                      Alíquota Efetiva: <strong className="text-foreground">
+                        {PayrollCalculatorService.getIrpfDetail(
+                          (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0),
+                          PayrollCalculatorService.calculateCltInss((parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)).amount,
+                          Math.round(parseFloat(formDependents) || 0)
+                        ).effectivePct}%
+                      </strong>
+                    </div>
+                    <div>
+                      Condição Legal: <strong className="text-emerald-400 font-bold">
+                        {PayrollCalculatorService.getIrpfDetail(
+                          (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0),
+                          PayrollCalculatorService.calculateCltInss((parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)).amount,
+                          Math.round(parseFloat(formDependents) || 0)
+                        ).isExempt ? '✓ ISENTO DE IRPF' : 'TRIBUTÁVEL'}
+                      </strong>
+                    </div>
+                    <div>
+                      IRPF Previsto: <strong className="text-emerald-400 font-bold">
+                        R$ {PayrollCalculatorService.getIrpfDetail(
+                          (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0),
+                          PayrollCalculatorService.calculateCltInss((parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0)).amount,
+                          Math.round(parseFloat(formDependents) || 0)
+                        ).amount.toFixed(2)}
+                      </strong>
+                    </div>
                   </div>
                 </div>
 
