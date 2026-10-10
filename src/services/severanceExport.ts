@@ -13,19 +13,25 @@ export const SeveranceExportService = {
       format: 'a4'
     });
 
+    const storeDisplayName = store?.name || rescisao.storeName || 'Loja Crepelocks';
+    const storeCityState = store?.city || 'Rio de Janeiro / RJ';
+    const storeAddress = store?.address || 'Endereço da Unidade';
+    const storeCnpj = store?.cnpj || '45.892.120/0001-83';
+    const storeCode = store?.code || 'UNID';
+
     // 1. Cabeçalho Institucional
     doc.setFillColor(15, 23, 42); // Slate-900
     doc.rect(14, 10, 182, 22, 'F');
 
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.text('CREPELOCKS BRASIL - TERMO DE RESCISÃO DO CONTRATO DE TRABALHO', 18, 19);
+    doc.setFontSize(11);
+    doc.text(`CREPELOCKS - ${storeDisplayName.toUpperCase()}`, 18, 18);
 
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(203, 213, 225);
-    doc.text('TRCT OFICIAL • COMPLIANCE CLT ART. 477 / ART. 479 (CONTRATO DE EXPERIÊNCIA)', 18, 27);
+    doc.text('TERMO DE RESCISÃO DO CONTRATO DE TRABALHO (TRCT) • COMPLIANCE CLT ART. 477 / ART. 479', 18, 26);
 
     // 2. Dados do Empregador e Empregado
     doc.setFillColor(248, 250, 252);
@@ -36,12 +42,12 @@ export const SeveranceExportService = {
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'bold');
-    doc.text('DADOS DA EMPRESA EMPREGADORA:', 18, 41);
+    doc.text('DADOS DA EMPRESA / ESTABELECIMENTO EMPREGADOR:', 18, 41);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Razão Social: CREPELOCKS ALIMENTAÇÃO LTDA`, 18, 47);
-    doc.text(`CNPJ: ${store?.cnpj || '45.892.120/0001-83'}`, 120, 47);
-    doc.text(`Estabelecimento / Loja: ${store?.name || rescisao.storeName} (${store?.code || 'LJ'})`, 18, 53);
-    doc.text(`Endereço: ${store?.address || 'Rede Crepelocks'} - ${store?.city || 'Rio de Janeiro / RJ'}`, 120, 53);
+    doc.text(`Estabelecimento / Loja: ${storeDisplayName} (${storeCode})`, 18, 47);
+    doc.text(`CNPJ: ${storeCnpj}`, 120, 47);
+    doc.text(`Razão Social: CREPELOCKS ALIMENTAÇÃO LTDA`, 18, 53);
+    doc.text(`Endereço: ${storeAddress} - ${storeCityState}`, 120, 53);
 
     doc.setFont('helvetica', 'bold');
     doc.text('DADOS DO COLABORADOR TRABALHADOR:', 18, 61);
@@ -289,7 +295,9 @@ export const SeveranceExportService = {
     );
 
     const dataHoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-    doc.text(`Rio de Janeiro - RJ, ${dataHoje}.`, 18, y + 5);
+    const cityStr = store?.city ? store.city.split('/')[0].trim() : 'Rio de Janeiro';
+    const stateStr = store?.city && store.city.includes('/') ? store.city.split('/')[1].trim() : 'RJ';
+    doc.text(`${cityStr} - ${stateStr}, ${dataHoje}.`, 18, y + 5);
 
     // Linhas de Assinatura
     y += 18;
@@ -300,9 +308,9 @@ export const SeveranceExportService = {
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text('CREPELOCKS ALIMENTAÇÃO LTDA', 55, y + 4, { align: 'center' });
+    doc.text(storeDisplayName.toUpperCase(), 55, y + 4, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.text('Empregador / Responsável Legal', 55, y + 8, { align: 'center' });
+    doc.text('Empregador / Responsável Legal da Unidade', 55, y + 8, { align: 'center' });
 
     doc.setFont('helvetica', 'bold');
     doc.text(rescisao.employeeName.toUpperCase(), 145, y + 4, { align: 'center' });

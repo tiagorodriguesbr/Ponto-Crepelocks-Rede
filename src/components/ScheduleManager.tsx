@@ -89,7 +89,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     selectedStoreId === 'all' ? true : u.storeId === selectedStoreId
   );
 
-  const daysInMonth = 31;
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
   const monthStr = selectedMonth < 10 ? `0${selectedMonth}` : `${selectedMonth}`;
 
   const weekDayNames = [
