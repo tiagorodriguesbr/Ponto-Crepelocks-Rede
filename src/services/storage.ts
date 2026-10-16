@@ -473,9 +473,6 @@ export const StorageService = {
 
       record.lunchEnd = timeStr;
       if (lateLunchReturnMin > 0) {
-        record.delayMinutes = lateLunchReturnMin;
-        record.status = 'atraso';
-        record.statusLabel = `Retorno do almoço com atraso de ${lateLunchReturnMin} min`;
         this.addNotification({
           id: `notif-lunch-delay-${Date.now()}`,
           type: 'atraso',
@@ -491,9 +488,6 @@ export const StorageService = {
         });
         statusMsg = `Retorno do almoço registrado com atraso de ${lateLunchReturnMin} min.`;
       } else {
-        record.delayMinutes = 0;
-        record.status = 'regular';
-        record.statusLabel = 'Em Jornada (Tarde/Segundo Turno)';
         statusMsg = 'Retorno da refeição registrado com sucesso!';
       }
     } else if (punchType === 'exit') {
@@ -516,21 +510,7 @@ export const StorageService = {
         };
       }
 
-      const scheduledEndMins = timeToMinutes(record.scheduledEnd);
-      const actualExitMins = timeToMinutes(timeStr.slice(0, 5));
-      const exitLateMin = Math.max(0, actualExitMins - scheduledEndMins);
-
       record.exit = timeStr;
-      if (exitLateMin > 0) {
-        record.delayMinutes = Math.max(record.delayMinutes || 0, exitLateMin);
-        record.status = 'atraso';
-        record.statusLabel = `Saída com atraso de ${exitLateMin} min`;
-      } else {
-        if (!record.entry || record.delayMinutes === 0) {
-          record.status = 'regular';
-          record.statusLabel = 'Jornada Finalizada';
-        }
-      }
       statusMsg = 'Fim de jornada registrado com sucesso! Bom descanso.';
     }
 
@@ -1179,7 +1159,7 @@ function recomputePunchMetrics(punch: PunchRecord): void {
   }
 
   const entryDelay = Math.max(0, entryMins - timeToMinutes(punch.scheduledStart));
-  const exitDelay = punch.exit ? Math.max(0, exitMins - timeToMinutes(punch.scheduledEnd)) : 0;
+  const exitEarly = punch.exit ? Math.max(0, timeToMinutes(punch.scheduledEnd) - exitMins) : 0;
   const lunchActualMin = punch.lunchStart && punch.lunchEnd
     ? Math.max(0, Math.abs(timeToMinutes(punch.lunchEnd) - timeToMinutes(punch.lunchStart)))
     : 0;
@@ -1187,7 +1167,7 @@ function recomputePunchMetrics(punch: PunchRecord): void {
     ? Math.max(0, lunchActualMin - (punch.scheduledLunchMin || 60))
     : 0;
 
-  punch.delayMinutes = entryDelay + exitDelay + lunchDelay;
+  punch.delayMinutes = entryDelay + exitEarly + lunchDelay;
 
   if (punch.expectedMinutes > 0) {
     const penaltyRatio = Math.min(100, (punch.delayMinutes / Math.max(1, punch.expectedMinutes)) * 100);

@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { DismissedEmployee, Store } from '../types';
+import { StorageService } from './storage';
 
 /**
  * Serviço de Geração de PDF Oficial: Termo de Rescisão do Contrato de Trabalho (TRCT)
@@ -13,11 +14,22 @@ export const SeveranceExportService = {
       format: 'a4'
     });
 
-    const storeDisplayName = store?.name || rescisao.storeName || 'Loja Crepelocks';
-    const storeCityState = store?.city || 'Rio de Janeiro / RJ';
-    const storeAddress = store?.address || 'Endereço da Unidade';
-    const storeCnpj = store?.cnpj || '45.892.120/0001-83';
-    const storeCode = store?.code || 'UNID';
+    const allStores = StorageService.getStores();
+    const resolvedStore =
+      store ||
+      allStores.find(
+        (s) =>
+          s.id === rescisao.storeId ||
+          s.id === rescisao.payrollStoreId ||
+          s.name.toLowerCase().trim() === rescisao.storeName?.toLowerCase().trim()
+      ) ||
+      allStores[0];
+
+    const storeDisplayName = resolvedStore?.name || rescisao.storeName || 'Loja Crepelocks';
+    const storeCityState = resolvedStore?.city || 'Rio de Janeiro / RJ';
+    const storeAddress = resolvedStore?.address || 'Endereço da Unidade';
+    const storeCnpj = resolvedStore?.cnpj || '45.892.120/0001-83';
+    const storeCode = resolvedStore?.code || 'UNID';
 
     // 1. Cabeçalho Institucional
     doc.setFillColor(15, 23, 42); // Slate-900
@@ -295,8 +307,8 @@ export const SeveranceExportService = {
     );
 
     const dataHoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-    const cityStr = store?.city ? store.city.split('/')[0].trim() : 'Rio de Janeiro';
-    const stateStr = store?.city && store.city.includes('/') ? store.city.split('/')[1].trim() : 'RJ';
+    const cityStr = resolvedStore?.city ? resolvedStore.city.split('/')[0].trim() : 'Rio de Janeiro';
+    const stateStr = resolvedStore?.city && resolvedStore.city.includes('/') ? resolvedStore.city.split('/')[1].trim() : 'RJ';
     doc.text(`${cityStr} - ${stateStr}, ${dataHoje}.`, 18, y + 5);
 
     // Linhas de Assinatura

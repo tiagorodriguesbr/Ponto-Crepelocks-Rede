@@ -182,7 +182,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-border/60 overflow-x-auto scrollbar-none">
         <nav className="flex space-x-1 py-1.5">
           {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
+            const isActive =
+              activeTab === tab.id ||
+              (tab.id === 'bater_ponto' && (activeTab === 'minha_aderencia' || activeTab === 'atestados'));
             return (
               <button
                 key={tab.id}

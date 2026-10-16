@@ -65,10 +65,25 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
   const canDownload = canDownloadDocuments(currentUser);
 
   // State
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [selectedStore, setSelectedStore] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  const availableMonths = useMemo(() => {
+    const list: Array<{ val: string; label: string }> = [];
+    const base = new Date();
+    for (let i = -6; i <= 6; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const name = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(d);
+      list.push({ val, label: name.charAt(0).toUpperCase() + name.slice(1) });
+    }
+    return list;
+  }, []);
   
   // Payroll configurations map
   const [configs, setConfigs] = useState<Record<string, PayrollEmployeeConfig>>(() => {
@@ -1059,11 +1074,11 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="px-3 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
-              <option value="2026-10">Outubro / 2026</option>
-              <option value="2026-09">Setembro / 2026</option>
-              <option value="2026-08">Agosto / 2026</option>
-              <option value="2026-11">Novembro / 2026</option>
-              <option value="2026-12">Dezembro / 2026</option>
+              {availableMonths.map((m) => (
+                <option key={m.val} value={m.val}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </div>
 

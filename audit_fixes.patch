@@ -1,0 +1,345 @@
+From 1ba8491dc7671e743c13f630edba1d07c1fdf844 Mon Sep 17 00:00:00 2001
+From: Tiago Rodrigues <tiago.rodrigues2933@gmail.com>
+Date: Fri, 16 Oct 2026 18:32:45 +0000
+Subject: [PATCH] fix: comprehensive system audit and bugfixes across all tabs
+
+- Fix overtime being penalized as delay and prevent morning delay wipes in storage.ts
+- Fix blank screen in App.tsx when manager switches to minha_aderencia or atestados
+- Add dynamic month & year navigation with controls to ScheduleManager
+- Make PayrollManager month selector dynamic across competencies
+- Align OccurrencesManager default user selection to manager store
+- Support escala_modificada and ponto_pendente navigation in NotificationDrawer
+- Ensure TRCT PDF store details strictly resolve to employee registered store
+---
+ src/App.tsx                           |  2 +-
+ src/components/Navbar.tsx             |  4 +-
+ src/components/NotificationDrawer.tsx |  6 +++
+ src/components/OccurrencesManager.tsx |  8 +++-
+ src/components/PayrollManager.tsx     | 27 +++++++++++---
+ src/components/ScheduleManager.tsx    | 53 ++++++++++++++++++++++++---
+ src/services/severanceExport.ts       | 26 +++++++++----
+ src/services/storage.ts               | 24 +-----------
+ 8 files changed, 105 insertions(+), 45 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index ee3fa35..ad921a6 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -162,7 +162,7 @@ export default function App() {
+         ) : (
+           /* Painel Administrativo Completo para Dono e Gerente */
+           <>
+-            {activeTab === 'bater_ponto' && (
++            {(activeTab === 'bater_ponto' || activeTab === 'minha_aderencia' || activeTab === 'atestados') && (
+               <EmployeePunchScreen
+                 currentUser={currentUser}
+                 currentStore={currentStore || stores[0]}
+diff --git a/src/components/Navbar.tsx b/src/components/Navbar.tsx
+index 94578d9..9a85098 100644
+--- a/src/components/Navbar.tsx
++++ b/src/components/Navbar.tsx
+@@ -182,7 +182,9 @@ export const Navbar: React.FC<NavbarProps> = ({
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-border/60 overflow-x-auto scrollbar-none">
+         <nav className="flex space-x-1 py-1.5">
+           {tabs.map((tab) => {
+-            const isActive = activeTab === tab.id;
++            const isActive =
++              activeTab === tab.id ||
++              (tab.id === 'bater_ponto' && (activeTab === 'minha_aderencia' || activeTab === 'atestados'));
+             return (
+               <button
+                 key={tab.id}
+diff --git a/src/components/NotificationDrawer.tsx b/src/components/NotificationDrawer.tsx
+index 3e22245..67b4341 100644
+--- a/src/components/NotificationDrawer.tsx
++++ b/src/components/NotificationDrawer.tsx
+@@ -126,6 +126,12 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
+                         onNavigateToTab('aderencia');
+                       } else if (notif.type === 'atestado_novo') {
+                         onNavigateToTab('ocorrencias');
++                      } else if (notif.type === 'escala_modificada') {
++                        onNavigateToTab('escalas');
++                      } else if (notif.type === 'ponto_pendente') {
++                        onNavigateToTab('aderencia');
++                      } else {
++                        onNavigateToTab('dashboard');
+                       }
+                     }}
+                     className="w-full mt-1 py-1 rounded bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 font-semibold text-[10px] flex items-center justify-center gap-1 transition-colors"
+diff --git a/src/components/OccurrencesManager.tsx b/src/components/OccurrencesManager.tsx
+index d65c2f4..78f3111 100644
+--- a/src/components/OccurrencesManager.tsx
++++ b/src/components/OccurrencesManager.tsx
+@@ -80,7 +80,9 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
+ 
+   // --- CRUD: Ocorrências ---
+   const [showNewOccModal, setShowNewOccModal] = useState<boolean>(false);
+-  const [occEmployeeId, setOccEmployeeId] = useState<string>(users[0]?.id || '');
++  const [occEmployeeId, setOccEmployeeId] = useState<string>(
++    availableUsersForCurrentUser[0]?.id || users[0]?.id || ''
++  );
+   const [occDate, setOccDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+   const [occType, setOccType] = useState<OccurrenceType>('folga');
+   const [occHoursAbono, setOccHoursAbono] = useState<number>(2);
+@@ -97,7 +99,9 @@ export const OccurrencesManager: React.FC<OccurrencesManagerProps> = ({
+   const editFileInputRef = useRef<HTMLInputElement | null>(null);
+ 
+   const [showNewCertModal, setShowNewCertModal] = useState<boolean>(false);
+-  const [certEmployeeId, setCertEmployeeId] = useState<string>(users[0]?.id || '');
++  const [certEmployeeId, setCertEmployeeId] = useState<string>(
++    availableUsersForCurrentUser[0]?.id || users[0]?.id || ''
++  );
+   const [certStartDate, setCertStartDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+   const [certDaysOff, setCertDaysOff] = useState<number>(1);
+   const [certCid, setCertCid] = useState<string>('');
+diff --git a/src/components/PayrollManager.tsx b/src/components/PayrollManager.tsx
+index 7148da8..8fede5d 100644
+--- a/src/components/PayrollManager.tsx
++++ b/src/components/PayrollManager.tsx
+@@ -65,10 +65,25 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
+   const canDownload = canDownloadDocuments(currentUser);
+ 
+   // State
+-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
++  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
++    const d = new Date();
++    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
++  });
+   const [selectedStore, setSelectedStore] = useState<string>('all');
+   const [roleFilter, setRoleFilter] = useState<string>('all');
+   const [searchTerm, setSearchTerm] = useState<string>('');
++
++  const availableMonths = useMemo(() => {
++    const list: Array<{ val: string; label: string }> = [];
++    const base = new Date();
++    for (let i = -6; i <= 6; i++) {
++      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
++      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
++      const name = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(d);
++      list.push({ val, label: name.charAt(0).toUpperCase() + name.slice(1) });
++    }
++    return list;
++  }, []);
+   
+   // Payroll configurations map
+   const [configs, setConfigs] = useState<Record<string, PayrollEmployeeConfig>>(() => {
+@@ -1059,11 +1074,11 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
+               onChange={(e) => setSelectedMonth(e.target.value)}
+               className="px-3 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+             >
+-              <option value="2026-10">Outubro / 2026</option>
+-              <option value="2026-09">Setembro / 2026</option>
+-              <option value="2026-08">Agosto / 2026</option>
+-              <option value="2026-11">Novembro / 2026</option>
+-              <option value="2026-12">Dezembro / 2026</option>
++              {availableMonths.map((m) => (
++                <option key={m.val} value={m.val}>
++                  {m.label}
++                </option>
++              ))}
+             </select>
+           </div>
+ 
+diff --git a/src/components/ScheduleManager.tsx b/src/components/ScheduleManager.tsx
+index 2cbaddb..7c9a18b 100644
+--- a/src/components/ScheduleManager.tsx
++++ b/src/components/ScheduleManager.tsx
+@@ -16,7 +16,9 @@ import {
+   ArrowRightLeft,
+   Eye,
+   Sliders,
+-  AlertCircle
++  AlertCircle,
++  ChevronLeft,
++  ChevronRight
+ } from 'lucide-react';
+ import { UserAccount, ScheduleDay, Store, ScheduleType } from '../types';
+ import { StorageService } from '../services/storage';
+@@ -45,8 +47,31 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
+     return defaultEmp ? defaultEmp.id : '';
+   });
+ 
+-  const [selectedYear] = useState<number>(() => new Date().getFullYear());
+-  const [selectedMonth] = useState<number>(() => new Date().getMonth() + 1);
++  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
++  const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth() + 1);
++
++  const handlePrevMonth = () => {
++    if (selectedMonth === 1) {
++      setSelectedMonth(12);
++      setSelectedYear((y) => y - 1);
++    } else {
++      setSelectedMonth((m) => m - 1);
++    }
++  };
++
++  const handleNextMonth = () => {
++    if (selectedMonth === 12) {
++      setSelectedMonth(1);
++      setSelectedYear((y) => y + 1);
++    } else {
++      setSelectedMonth((m) => m + 1);
++    }
++  };
++
++  const currentMonthName = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(
++    new Date(selectedYear, selectedMonth - 1, 1)
++  );
++  const formattedMonthName = currentMonthName.charAt(0).toUpperCase() + currentMonthName.slice(1);
+ 
+   const selectedEmployee = users.find((u) => u.id === selectedEmployeeId) || users[0];
+ 
+@@ -310,9 +335,25 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
+             <span>Gerador Automático da Escala Mensal</span>
+           </div>
+           <div className="flex items-center gap-2">
+-            <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+-              Competência: Outubro / 2026
++            <button
++              type="button"
++              onClick={handlePrevMonth}
++              className="p-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
++              title="Mês anterior"
++            >
++              <ChevronLeft className="w-4 h-4" />
++            </button>
++            <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-500/30">
++              Competência: {formattedMonthName} / {selectedYear}
+             </span>
++            <button
++              type="button"
++              onClick={handleNextMonth}
++              className="p-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
++              title="Próximo mês"
++            >
++              <ChevronRight className="w-4 h-4" />
++            </button>
+           </div>
+         </div>
+ 
+@@ -583,7 +624,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
+         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+           <div>
+             <h3 className="text-base font-bold text-white flex items-center gap-2">
+-              <span>Calendário de Outubro/2026: {selectedEmployee?.name}</span>
++              <span>Calendário de {formattedMonthName}/{selectedYear}: {selectedEmployee?.name}</span>
+               <span className="text-xs px-2.5 py-0.5 rounded-full bg-zinc-800 text-emerald-400 font-semibold border border-zinc-700">
+                 {selectedEmployee?.positionTitle} • Escala {scaleChoice}
+               </span>
+diff --git a/src/services/severanceExport.ts b/src/services/severanceExport.ts
+index c61c1d2..8e4f4ab 100644
+--- a/src/services/severanceExport.ts
++++ b/src/services/severanceExport.ts
+@@ -1,5 +1,6 @@
+ import jsPDF from 'jspdf';
+ import { DismissedEmployee, Store } from '../types';
++import { StorageService } from './storage';
+ 
+ /**
+  * Serviço de Geração de PDF Oficial: Termo de Rescisão do Contrato de Trabalho (TRCT)
+@@ -13,11 +14,22 @@ export const SeveranceExportService = {
+       format: 'a4'
+     });
+ 
+-    const storeDisplayName = store?.name || rescisao.storeName || 'Loja Crepelocks';
+-    const storeCityState = store?.city || 'Rio de Janeiro / RJ';
+-    const storeAddress = store?.address || 'Endereço da Unidade';
+-    const storeCnpj = store?.cnpj || '45.892.120/0001-83';
+-    const storeCode = store?.code || 'UNID';
++    const allStores = StorageService.getStores();
++    const resolvedStore =
++      store ||
++      allStores.find(
++        (s) =>
++          s.id === rescisao.storeId ||
++          s.id === rescisao.payrollStoreId ||
++          s.name.toLowerCase().trim() === rescisao.storeName?.toLowerCase().trim()
++      ) ||
++      allStores[0];
++
++    const storeDisplayName = resolvedStore?.name || rescisao.storeName || 'Loja Crepelocks';
++    const storeCityState = resolvedStore?.city || 'Rio de Janeiro / RJ';
++    const storeAddress = resolvedStore?.address || 'Endereço da Unidade';
++    const storeCnpj = resolvedStore?.cnpj || '45.892.120/0001-83';
++    const storeCode = resolvedStore?.code || 'UNID';
+ 
+     // 1. Cabeçalho Institucional
+     doc.setFillColor(15, 23, 42); // Slate-900
+@@ -295,8 +307,8 @@ export const SeveranceExportService = {
+     );
+ 
+     const dataHoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+-    const cityStr = store?.city ? store.city.split('/')[0].trim() : 'Rio de Janeiro';
+-    const stateStr = store?.city && store.city.includes('/') ? store.city.split('/')[1].trim() : 'RJ';
++    const cityStr = resolvedStore?.city ? resolvedStore.city.split('/')[0].trim() : 'Rio de Janeiro';
++    const stateStr = resolvedStore?.city && resolvedStore.city.includes('/') ? resolvedStore.city.split('/')[1].trim() : 'RJ';
+     doc.text(`${cityStr} - ${stateStr}, ${dataHoje}.`, 18, y + 5);
+ 
+     // Linhas de Assinatura
+diff --git a/src/services/storage.ts b/src/services/storage.ts
+index 284f9aa..78b349e 100644
+--- a/src/services/storage.ts
++++ b/src/services/storage.ts
+@@ -473,9 +473,6 @@ export const StorageService = {
+ 
+       record.lunchEnd = timeStr;
+       if (lateLunchReturnMin > 0) {
+-        record.delayMinutes = lateLunchReturnMin;
+-        record.status = 'atraso';
+-        record.statusLabel = `Retorno do almoço com atraso de ${lateLunchReturnMin} min`;
+         this.addNotification({
+           id: `notif-lunch-delay-${Date.now()}`,
+           type: 'atraso',
+@@ -491,9 +488,6 @@ export const StorageService = {
+         });
+         statusMsg = `Retorno do almoço registrado com atraso de ${lateLunchReturnMin} min.`;
+       } else {
+-        record.delayMinutes = 0;
+-        record.status = 'regular';
+-        record.statusLabel = 'Em Jornada (Tarde/Segundo Turno)';
+         statusMsg = 'Retorno da refeição registrado com sucesso!';
+       }
+     } else if (punchType === 'exit') {
+@@ -516,21 +510,7 @@ export const StorageService = {
+         };
+       }
+ 
+-      const scheduledEndMins = timeToMinutes(record.scheduledEnd);
+-      const actualExitMins = timeToMinutes(timeStr.slice(0, 5));
+-      const exitLateMin = Math.max(0, actualExitMins - scheduledEndMins);
+-
+       record.exit = timeStr;
+-      if (exitLateMin > 0) {
+-        record.delayMinutes = Math.max(record.delayMinutes || 0, exitLateMin);
+-        record.status = 'atraso';
+-        record.statusLabel = `Saída com atraso de ${exitLateMin} min`;
+-      } else {
+-        if (!record.entry || record.delayMinutes === 0) {
+-          record.status = 'regular';
+-          record.statusLabel = 'Jornada Finalizada';
+-        }
+-      }
+       statusMsg = 'Fim de jornada registrado com sucesso! Bom descanso.';
+     }
+ 
+@@ -1179,7 +1159,7 @@ function recomputePunchMetrics(punch: PunchRecord): void {
+   }
+ 
+   const entryDelay = Math.max(0, entryMins - timeToMinutes(punch.scheduledStart));
+-  const exitDelay = punch.exit ? Math.max(0, exitMins - timeToMinutes(punch.scheduledEnd)) : 0;
++  const exitEarly = punch.exit ? Math.max(0, timeToMinutes(punch.scheduledEnd) - exitMins) : 0;
+   const lunchActualMin = punch.lunchStart && punch.lunchEnd
+     ? Math.max(0, Math.abs(timeToMinutes(punch.lunchEnd) - timeToMinutes(punch.lunchStart)))
+     : 0;
+@@ -1187,7 +1167,7 @@ function recomputePunchMetrics(punch: PunchRecord): void {
+     ? Math.max(0, lunchActualMin - (punch.scheduledLunchMin || 60))
+     : 0;
+ 
+-  punch.delayMinutes = entryDelay + exitDelay + lunchDelay;
++  punch.delayMinutes = entryDelay + exitEarly + lunchDelay;
+ 
+   if (punch.expectedMinutes > 0) {
+     const penaltyRatio = Math.min(100, (punch.delayMinutes / Math.max(1, punch.expectedMinutes)) * 100);
+-- 
+2.34.1
+

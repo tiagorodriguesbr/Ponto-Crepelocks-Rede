@@ -126,6 +126,12 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                         onNavigateToTab('aderencia');
                       } else if (notif.type === 'atestado_novo') {
                         onNavigateToTab('ocorrencias');
+                      } else if (notif.type === 'escala_modificada') {
+                        onNavigateToTab('escalas');
+                      } else if (notif.type === 'ponto_pendente') {
+                        onNavigateToTab('aderencia');
+                      } else {
+                        onNavigateToTab('dashboard');
                       }
                     }}
                     className="w-full mt-1 py-1 rounded bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 font-semibold text-[10px] flex items-center justify-center gap-1 transition-colors"

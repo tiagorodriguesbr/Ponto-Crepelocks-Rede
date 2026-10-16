@@ -16,7 +16,9 @@ import {
   ArrowRightLeft,
   Eye,
   Sliders,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { UserAccount, ScheduleDay, Store, ScheduleType } from '../types';
 import { StorageService } from '../services/storage';
@@ -45,8 +47,31 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     return defaultEmp ? defaultEmp.id : '';
   });
 
-  const [selectedYear] = useState<number>(() => new Date().getFullYear());
-  const [selectedMonth] = useState<number>(() => new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth() + 1);
+
+  const handlePrevMonth = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12);
+      setSelectedYear((y) => y - 1);
+    } else {
+      setSelectedMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (selectedMonth === 12) {
+      setSelectedMonth(1);
+      setSelectedYear((y) => y + 1);
+    } else {
+      setSelectedMonth((m) => m + 1);
+    }
+  };
+
+  const currentMonthName = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(
+    new Date(selectedYear, selectedMonth - 1, 1)
+  );
+  const formattedMonthName = currentMonthName.charAt(0).toUpperCase() + currentMonthName.slice(1);
 
   const selectedEmployee = users.find((u) => u.id === selectedEmployeeId) || users[0];
 
@@ -310,9 +335,25 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             <span>Gerador Automático da Escala Mensal</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-              Competência: Outubro / 2026
+            <button
+              type="button"
+              onClick={handlePrevMonth}
+              className="p-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+              title="Mês anterior"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-500/30">
+              Competência: {formattedMonthName} / {selectedYear}
             </span>
+            <button
+              type="button"
+              onClick={handleNextMonth}
+              className="p-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+              title="Próximo mês"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -583,7 +624,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>Calendário de Outubro/2026: {selectedEmployee?.name}</span>
+              <span>Calendário de {formattedMonthName}/{selectedYear}: {selectedEmployee?.name}</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-zinc-800 text-emerald-400 font-semibold border border-zinc-700">
                 {selectedEmployee?.positionTitle} • Escala {scaleChoice}
               </span>

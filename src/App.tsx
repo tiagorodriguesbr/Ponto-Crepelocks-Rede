@@ -162,7 +162,7 @@ export default function App() {
         ) : (
           /* Painel Administrativo Completo para Dono e Gerente */
           <>
-            {activeTab === 'bater_ponto' && (
+            {(activeTab === 'bater_ponto' || activeTab === 'minha_aderencia' || activeTab === 'atestados') && (
               <EmployeePunchScreen
                 currentUser={currentUser}
                 currentStore={currentStore || stores[0]}
