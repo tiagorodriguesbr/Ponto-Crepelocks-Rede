@@ -18,11 +18,16 @@ import {
   Lock,
   FileText,
   HelpCircle,
-  Check
+  Check,
+  DollarSign,
+  Download,
+  Printer
 } from 'lucide-react';
 import { UserAccount, PunchRecord, Store, PunchType, ScheduleDay, MedicalCertificate, OccurrenceRecord } from '../types';
 import { ClockWidget } from './ClockWidget';
 import { StorageService } from '../services/storage';
+import { PayrollCalculatorService } from '../services/payrollCalculator';
+import { jsPDF } from 'jspdf';
 
 interface EmployeePunchScreenProps {
   currentUser: UserAccount;
@@ -47,7 +52,7 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
   onTabChange,
   onPunchRegistered
 }) => {
-  const [internalTab, setInternalTab] = useState<'bater_ponto' | 'minha_aderencia' | 'atestados'>('bater_ponto');
+  const [internalTab, setInternalTab] = useState<'bater_ponto' | 'minha_aderencia' | 'atestados' | 'meu_holerite'>('bater_ponto');
   const [punchFeedback, setPunchFeedback] = useState<{ message: string; hash?: string } | null>(null);
   const [viewingCert, setViewingCert] = useState<MedicalCertificate | null>(null);
 
@@ -66,11 +71,11 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
   });
 
   // Synchronize internal and external active tab
-  const currentTab = (externalActiveTab === 'bater_ponto' || externalActiveTab === 'minha_aderencia' || externalActiveTab === 'atestados')
+  const currentTab = (externalActiveTab === 'bater_ponto' || externalActiveTab === 'minha_aderencia' || externalActiveTab === 'atestados' || externalActiveTab === 'meu_holerite')
     ? externalActiveTab
     : internalTab;
 
-  const handleTabSwitch = (tab: 'bater_ponto' | 'minha_aderencia' | 'atestados') => {
+  const handleTabSwitch = (tab: 'bater_ponto' | 'minha_aderencia' | 'atestados' | 'meu_holerite') => {
     setInternalTab(tab);
     if (onTabChange) {
       onTabChange(tab);
@@ -237,7 +242,7 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Loja: <strong className="text-foreground">{currentStore?.name || 'Crepelocks'}</strong> ({currentStore?.code}) • Escala:{' '}
+              Loja: <strong className="text-foreground">{currentStore?.name || 'Unidade Principal'}</strong> ({currentStore?.code}) • Escala:{' '}
               <span className="font-semibold text-emerald-400">{currentUser.scheduleType}</span>
             </p>
           </div>
@@ -258,34 +263,34 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
       </div>
 
       {/* Synchronized Navigation Tabs for Employee */}
-      <div className="flex items-center gap-2 p-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
         <button
           onClick={() => handleTabSwitch('bater_ponto')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
             currentTab === 'bater_ponto'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
           }`}
         >
           <Clock className="w-4 h-4" />
-          <span>Meu Ponto Eletrônico</span>
+          <span>Meu Ponto</span>
         </button>
 
         <button
           onClick={() => handleTabSwitch('minha_aderencia')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
             currentTab === 'minha_aderencia'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
           }`}
         >
           <Calendar className="w-4 h-4" />
-          <span>Minha Escala & Aderência</span>
+          <span>Minha Escala</span>
         </button>
 
         <button
           onClick={() => handleTabSwitch('atestados')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
             currentTab === 'atestados'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
@@ -293,6 +298,18 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
         >
           <FileText className="w-4 h-4" />
           <span>Atestados ({myCertificates.length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabSwitch('meu_holerite')}
+          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+            currentTab === 'meu_holerite'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" />
+          <span>Meus Contracheques</span>
         </button>
       </div>
 
@@ -637,7 +654,7 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
                     Chave SHA-256: {todayPunch.hashReceipt}
                   </p>
                   <p className="text-[11px] text-zinc-500">
-                    Terminal / IP: {todayPunch.locationIp || 'PDV Crepelocks Conectado'} • Data: {todayPunch.date} • Registro Homologado
+                    Terminal / IP: {todayPunch.locationIp || 'PDV Conectado'} • Data: {todayPunch.date} • Registro Homologado
                   </p>
                 </div>
 

@@ -167,16 +167,17 @@ export const PayrollCalculatorService = {
     }
   },
 
-  // Salário Família (até teto limite previdenciário de R$ 1.819,26 recebe R$ 62,04 por dependente)
-  calculateFamilyAllowance(gross: number, dependentsCount: number = 0): number {
-    if (dependentsCount <= 0) return 0;
+  // Salário Família (Art. 65 Lei 8.213/91 & Portaria MPS/MF vigente)
+  // Devido apenas se expressamente habilitado E remuneração até o teto legal de R$ 1.819,26 (R$ 62,04 por cota)
+  calculateFamilyAllowance(gross: number, dependentsCount: number = 0, enabled: boolean = false): number {
+    if (!enabled || dependentsCount <= 0) return 0;
     if (gross <= 1819.26 && gross > 0) {
       return dependentsCount * 62.04;
     }
     return 0;
   },
 
-  // Executa o cálculo completo e holerite de um colaborador
+  // Executa o cálculo completo e holerite oficial de um colaborador
   calculatePayroll(
     employee: UserAccount,
     config: PayrollEmployeeConfig | undefined,
@@ -187,40 +188,81 @@ export const PayrollCalculatorService = {
     const baseSalary = Number(config?.baseSalary ?? 0);
     const bonusGratification = Number(config?.bonusGratification ?? 0);
     const insalubridadePct = Number(config?.insalubridadePct ?? 0);
-    const dependents = Number(config?.familyAllowanceDependents ?? 0);
+    
+    // Salário Família: estritamente condicionado ao opt-in expresso, colaborador não-dono, dependentes comprovados e teto de remuneração
+    const isEligibleRole = employee.role !== 'dono';
+    const receiveFamAllowance = isEligibleRole && Boolean(config?.receiveSalarioFamilia ?? employee.receiveSalarioFamilia ?? false);
+    const dependentsCount = receiveFamAllowance
+      ? Number(
+          config?.familyAllowanceDependents ??
+          (employee.dependentsList?.filter((d) => d.eligibleFamilyAllowance).length || 0)
+        )
+      : 0;
+    const familyAllowancePay = isEligibleRole && receiveFamAllowance && dependentsCount > 0
+      ? this.calculateFamilyAllowance(baseSalary, dependentsCount, true)
+      : 0;
 
-    // Cálculos de Ponto Eletrônico (Horas Extras e Atrasos se ativos)
+    // Cálculos de Ponto Eletrônico (Horas Extras, DSR e Atrasos se aplicáveis)
     let extraHoursCount = 0;
     let extraHoursPay = 0;
+    let dsrExtraHoursPay = 0;
+    let delaysMinutesCount = 0;
+    let delaysDiscount = 0;
+    let dsrLossDiscount = 0;
     let unjustifiedAbsencesDiscount = 0;
 
     const hourlyRate = baseSalary > 0 ? baseSalary / 220 : 0; // Padrão 220h/mês CLT
 
-    if (config?.includePunchesExtras !== false) {
-      const userMonthPunches = punches.filter(
-        (p) => p.employeeId === employee.id && p.date.startsWith(monthYear)
-      );
+    const userMonthPunches = punches.filter(
+      (p) => p.employeeId === employee.id && p.date.startsWith(monthYear)
+    );
+
+    // Horas Extras (se não for cargo de confiança/dono e permitido no config)
+    if (config?.includePunchesExtras !== false && !employee.exemptFromPunchClock && employee.role !== 'dono') {
       const totalExtraMin = userMonthPunches.reduce((acc, p) => acc + (p.extraMinutes || 0), 0);
       extraHoursCount = Math.round((totalExtraMin / 60) * 10) / 10;
-      // Hora extra 50% conforme CLT
+      // Hora extra com adicional legal mínimo de 50% (CLT Art. 59 § 1º)
       extraHoursPay = Math.round(extraHoursCount * hourlyRate * 1.5 * 100) / 100;
+      if (extraHoursPay > 0) {
+        // Reflexo no DSR sobre Horas Extras (Lei 605/49, Súmula 172 TST - média de 1/6)
+        dsrExtraHoursPay = Math.round((extraHoursPay / 6) * 100) / 100;
+      }
     }
 
-    if (config?.includeDelaysDiscount) {
-      const userMonthPunches = punches.filter(
-        (p) => p.employeeId === employee.id && p.date.startsWith(monthYear)
-      );
-      const totalDelayMin = userMonthPunches.reduce((acc, p) => acc + (p.delayMinutes || 0), 0);
-      const delayHours = totalDelayMin / 60;
-      unjustifiedAbsencesDiscount = Math.round(delayHours * hourlyRate * 100) / 100;
+    // Desconto Automático de Atrasos & Saídas Antecipadas (CLT Art. 58 § 1º)
+    if (!employee.exemptFromPunchClock && employee.role !== 'dono') {
+      const totalLoggedDelayMin = userMonthPunches.reduce((acc, p) => acc + (p.delayMinutes || 0), 0);
+      delaysMinutesCount = config?.manualDelaysMinutesOverride != null && config.manualDelaysMinutesOverride >= 0
+        ? Number(config.manualDelaysMinutesOverride)
+        : totalLoggedDelayMin;
+
+      const shouldDeductDelays = config?.includeDelaysDiscount !== false && config?.delaysDeductionPolicy !== 'isento';
+
+      if (shouldDeductDelays && delaysMinutesCount > 0) {
+        if (config?.manualDelaysDiscountOverride != null && config.manualDelaysDiscountOverride >= 0) {
+          delaysDiscount = Number(config.manualDelaysDiscountOverride);
+        } else {
+          const delayHours = delaysMinutesCount / 60;
+          delaysDiscount = Math.round(delayHours * hourlyRate * 100) / 100;
+        }
+
+        // Reflexo de atraso/falta no DSR (Lei 605/49, Art. 6º): perda de 1 dia de repouso remunerado
+        if (config?.delaysDeductionPolicy === 'com_dsr' || delaysMinutesCount >= 120) {
+          dsrLossDiscount = Math.round((baseSalary / 30) * 100) / 100;
+        }
+      }
     }
 
     // Insalubridade (baseada no salário mínimo vigente R$ 1.412)
     const insalubridadePay = insalubridadePct > 0 ? Math.round(1412.00 * (insalubridadePct / 100) * 100) / 100 : 0;
-    const familyAllowancePay = this.calculateFamilyAllowance(baseSalary, dependents);
 
     // Total Bruto dos Proventos
-    const totalGross = Math.round((baseSalary + bonusGratification + extraHoursPay + insalubridadePay + familyAllowancePay) * 100) / 100;
+    const totalGross = Math.round(
+      (baseSalary + bonusGratification + extraHoursPay + dsrExtraHoursPay + insalubridadePay + familyAllowancePay) * 100
+    ) / 100;
+
+    // Base de Contribuição Previdenciária INSS (Salário Família não incide INSS nem FGTS)
+    const inssBase = Math.round((totalGross - familyAllowancePay) * 100) / 100;
 
     // Cálculo do INSS
     let inssDiscount = 0;
@@ -228,13 +270,13 @@ export const PayrollCalculatorService = {
 
     if (config?.manualInssOverride != null && config.manualInssOverride >= 0) {
       inssDiscount = Number(config.manualInssOverride);
-      inssEffectivePct = totalGross > 0 ? Math.round((inssDiscount / totalGross) * 10000) / 100 : 0;
+      inssEffectivePct = inssBase > 0 ? Math.round((inssDiscount / inssBase) * 10000) / 100 : 0;
     } else if (config?.inssDiscountPct != null && config.inssDiscountPct >= 0) {
       inssEffectivePct = Number(config.inssDiscountPct);
-      inssDiscount = Math.round(totalGross * (inssEffectivePct / 100) * 100) / 100;
+      inssDiscount = Math.round(inssBase * (inssEffectivePct / 100) * 100) / 100;
     } else {
       // Cálculo progressivo legal CLT
-      const res = this.calculateCltInss(totalGross);
+      const res = this.calculateCltInss(inssBase);
       inssDiscount = res.amount;
       inssEffectivePct = res.effectivePct;
     }
@@ -242,19 +284,22 @@ export const PayrollCalculatorService = {
     // Cálculo do IRPF
     let irpfDiscount = 0;
     let irpfEffectivePct = 0;
+    const irpfDeps = config?.irpfDependentsCount ?? (receiveFamAllowance ? dependentsCount : 0);
 
     if (config?.manualIrpfOverride != null && config.manualIrpfOverride >= 0) {
       irpfDiscount = Number(config.manualIrpfOverride);
-      irpfEffectivePct = totalGross > 0 ? Math.round((irpfDiscount / totalGross) * 10000) / 100 : 0;
+      irpfEffectivePct = inssBase > 0 ? Math.round((irpfDiscount / inssBase) * 10000) / 100 : 0;
     } else if (config?.irpfDiscountPct != null && config.irpfDiscountPct >= 0) {
       irpfEffectivePct = Number(config.irpfDiscountPct);
-      irpfDiscount = Math.round(totalGross * (irpfEffectivePct / 100) * 100) / 100;
+      irpfDiscount = Math.round(inssBase * (irpfEffectivePct / 100) * 100) / 100;
     } else {
       // Cálculo oficial com tabela progressiva
-      const res = this.calculateCltIrpf(totalGross, inssDiscount, dependents);
+      const res = this.calculateCltIrpf(inssBase, inssDiscount, irpfDeps);
       irpfDiscount = res.amount;
       irpfEffectivePct = res.effectivePct;
     }
+
+    const irpfBase = Math.max(0, Math.round((inssBase - inssDiscount - irpfDeps * 189.59) * 100) / 100);
 
     // Vale Transporte (VT)
     let vtDiscount = 0;
@@ -285,30 +330,59 @@ export const PayrollCalculatorService = {
 
     // Soma total dos Descontos
     const totalDiscounts = Math.round(
-      (inssDiscount + irpfDiscount + vtDiscount + vrVaDiscount + unjustifiedAbsencesDiscount + otherDiscounts) * 100
+      (inssDiscount + irpfDiscount + vtDiscount + vrVaDiscount + delaysDiscount + dsrLossDiscount + unjustifiedAbsencesDiscount + otherDiscounts) * 100
     ) / 100;
 
     // Salário Líquido Final
     const netSalary = Math.round(Math.max(0, totalGross - totalDiscounts) * 100) / 100;
 
-    // FGTS Informativo da Empresa (8% sobre o total bruto)
-    const fgtsEmployer = Math.round(totalGross * 0.08 * 100) / 100;
+    // FGTS Informativo da Empresa (8% sobre base INSS)
+    const fgtsBase = inssBase;
+    const fgtsEmployer = Math.round(fgtsBase * 0.08 * 100) / 100;
+
+    // Informações Oficiais da Loja (100% de acordo com a unidade do colaborador)
+    const storeRazaoSocial = store?.razaoSocial || store?.name || 'Unidade Operacional';
+    const storeCnpj = store?.cnpj || '';
+    const storeStateRegistration = store?.stateRegistration || 'Isento';
+    const storeAddress = store?.address || 'Endereço da Unidade';
+    const storeNeighborhood = store?.neighborhood || '';
+    const storeCep = store?.cep || '';
+    const storeCity = store?.city || '';
+    const storePhone = store?.phone || '';
+    const storeEmail = store?.email || '';
+    const holeriteHeaderTitle = store?.holeriteHeaderTitle || (employee.role === 'dono' ? 'DEMONSTRATIVO DE PRÓ-LABORE' : 'RECIBO DE PAGAMENTO DE SALÁRIO');
+    const holeriteSubtitle = store?.holeriteSubtitle || 'Demonstrativo Mensal de Pagamento de Salário - CLT';
+    const holeriteFooterMessage = store?.holeriteFooterMessage || 'Crédito realizado em conta bancária/PIX. Dúvidas com o RH/DP.';
 
     return {
       employeeId: employee.id,
       employeeName: employee.name,
       positionTitle: employee.positionTitle || 'Colaborador',
       role: employee.role,
-      storeName: store?.name || 'Sede Crepelocks',
+      storeName: store?.name || 'Unidade Cadastrada',
+      storeRazaoSocial,
+      storeCnpj,
+      storeStateRegistration,
+      storeAddress,
+      storeNeighborhood,
+      storeCep,
+      storeCity,
       storeCode: store?.code || 'LJ-01',
+      storePhone,
+      storeEmail,
+      holeriteHeaderTitle,
+      holeriteSubtitle,
+      holeriteFooterMessage,
       payrollStoreId: config?.payrollStoreId || employee.payrollStoreId || store?.id,
       monthYear,
       baseSalary,
       bonusGratification,
       extraHoursPay,
       extraHoursCount,
+      dsrExtraHoursPay,
       insalubridadePay,
       familyAllowancePay,
+      familyAllowanceCount: receiveFamAllowance ? dependentsCount : 0,
       totalGross,
       inssDiscount,
       inssEffectivePct,
@@ -318,10 +392,16 @@ export const PayrollCalculatorService = {
       vtEffectivePct,
       vrVaDiscount,
       vrVaEffectivePct,
+      delaysMinutesCount,
+      delaysDiscount,
+      dsrLossDiscount,
       unjustifiedAbsencesDiscount,
       otherDiscounts,
       totalDiscounts,
       netSalary,
+      inssBase,
+      irpfBase,
+      fgtsBase,
       fgtsEmployer
     };
   },
@@ -352,7 +432,7 @@ export const PayrollCalculatorService = {
       probationExtended = false,
       probationDaysExtension = 45,
       otherDiscounts = 0,
-      storeName = 'Crepelocks',
+      storeName = 'Unidade da Empresa',
       payrollStoreId
     } = params;
 

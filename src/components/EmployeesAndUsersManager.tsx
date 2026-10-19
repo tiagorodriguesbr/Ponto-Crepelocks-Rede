@@ -29,7 +29,7 @@ import {
   Sparkles,
   Calculator
 } from 'lucide-react';
-import { UserAccount, Store, Role, ScheduleType, UserPermissions, DismissedEmployee, SeveranceReason } from '../types';
+import { UserAccount, Store, Role, ScheduleType, UserPermissions, DismissedEmployee, SeveranceReason, EmployeeDependent, PayrollEmployeeConfig } from '../types';
 import { StorageService } from '../services/storage';
 import { PayrollCalculatorService } from '../services/payrollCalculator';
 import { SeveranceExportService } from '../services/severanceExport';
@@ -156,6 +156,24 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     canEditStores: false
   });
 
+  // Salário Base, Benefício Salário Família, Dependentes & Dados Bancários no Cadastro
+  const [addBaseSalary, setAddBaseSalary] = useState<string>('1600.00');
+  const [addReceiveSalarioFamilia, setAddReceiveSalarioFamilia] = useState<boolean>(false);
+  const [addDependentsList, setAddDependentsList] = useState<EmployeeDependent[]>([]);
+  const [addBankName, setAddBankName] = useState<string>('Itaú Unibanco');
+  const [addBankAgency, setAddBankAgency] = useState<string>('');
+  const [addBankAccount, setAddBankAccount] = useState<string>('');
+  const [addBankAccountType, setAddBankAccountType] = useState<'corrente' | 'salario' | 'poupanca'>('corrente');
+  const [addBankPix, setAddBankPix] = useState<string>('');
+
+  // Dependent subform temporary state
+  const [depName, setDepName] = useState<string>('');
+  const [depCpf, setDepCpf] = useState<string>('');
+  const [depBirth, setDepBirth] = useState<string>('');
+  const [depRelationship, setDepRelationship] = useState<EmployeeDependent['relationship']>('filho');
+  const [depEligibleFam, setDepEligibleFam] = useState<boolean>(true);
+  const [depEligibleIrpf, setDepEligibleIrpf] = useState<boolean>(true);
+
   // Edit user form state
   const [editName, setEditName] = useState<string>('');
   const [editEmail, setEditEmail] = useState<string>('');
@@ -164,6 +182,16 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const [editStoreLinkType, setEditStoreLinkType] = useState<'all' | 'single'>('all');
   const [editSelectedStoreId, setEditSelectedStoreId] = useState<string>('');
   const [editPayrollStoreId, setEditPayrollStoreId] = useState<string>(stores[0]?.id || 'store-1');
+
+  // Salário Base, Salário Família, Dependentes & Dados Bancários na Edição
+  const [editBaseSalary, setEditBaseSalary] = useState<string>('1600.00');
+  const [editReceiveSalarioFamilia, setEditReceiveSalarioFamilia] = useState<boolean>(false);
+  const [editDependentsList, setEditDependentsList] = useState<EmployeeDependent[]>([]);
+  const [editBankName, setEditBankName] = useState<string>('Itaú Unibanco');
+  const [editBankAgency, setEditBankAgency] = useState<string>('');
+  const [editBankAccount, setEditBankAccount] = useState<string>('');
+  const [editBankAccountType, setEditBankAccountType] = useState<'corrente' | 'salario' | 'poupanca'>('corrente');
+  const [editBankPix, setEditBankPix] = useState<string>('');
 
   // Data de Admissão, Tipo de Contrato & Experiência na Edição
   const [editAdmissionDate, setEditAdmissionDate] = useState<string>('');
@@ -276,6 +304,14 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       canExportPayroll: true,
       canEditStores: false
     });
+    setAddBaseSalary('1600.00');
+    setAddReceiveSalarioFamilia(false);
+    setAddDependentsList([]);
+    setAddBankName('Itaú Unibanco');
+    setAddBankAgency('');
+    setAddBankAccount('');
+    setAddBankAccountType('corrente');
+    setAddBankPix('');
   };
 
   const handleRoleChangeInAdd = (newRole: Role) => {
@@ -285,6 +321,8 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       setAddStoreLinkType('all');
       setAddExemptFromPunch(true); // Dono nunca bate ponto
       setAddAccompanimentMode(false);
+      setAddBaseSalary('12500.00');
+      setAddReceiveSalarioFamilia(false); // Dono não recebe salário família
       setAddPermissions({
         canEditSchedules: true,
         canApproveOccurrences: true,
@@ -299,6 +337,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       setAddStoreLinkType('all'); // Padrão: vinculado a todas as lojas
       setAddExemptFromPunch(true); // Padrão: Cargo de Confiança (Dono pode alterar para bater ponto)
       setAddAccompanimentMode(true); // Padrão: Acompanhamento sem poder modificar
+      setAddBaseSalary('2800.00');
       setAddPermissions({
         canEditSchedules: false,
         canApproveOccurrences: false,
@@ -313,6 +352,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       setAddStoreLinkType('single');
       setAddExemptFromPunch(false); // Atendente bate ponto obrigatório
       setAddAccompanimentMode(false);
+      setAddBaseSalary('1600.00');
       setAddPermissions({
         canEditSchedules: false,
         canApproveOccurrences: false,
@@ -367,6 +407,17 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setEditProbationDaysInitial(user.probationDaysInitial || 45);
     setEditProbationExtended(Boolean(user.probationExtended));
     setEditProbationDaysExtension(user.probationDaysExtension || 45);
+
+    // Carregar salário, dependentes e banco
+    const cfg = StorageService.getPayrollConfigs().find((c) => c.employeeId === user.id);
+    setEditBaseSalary(cfg?.baseSalary !== undefined ? String(cfg.baseSalary) : (user.role === 'dono' ? '12500' : '1600'));
+    setEditReceiveSalarioFamilia(user.role === 'dono' ? false : Boolean(user.receiveSalarioFamilia ?? cfg?.receiveSalarioFamilia ?? false));
+    setEditDependentsList(user.dependentsList || []);
+    setEditBankName(user.bankData?.bankName || 'Itaú Unibanco');
+    setEditBankAgency(user.bankData?.agency || '');
+    setEditBankAccount(user.bankData?.account || '');
+    setEditBankAccountType(user.bankData?.accountType || 'corrente');
+    setEditBankPix(user.bankData?.pixKey || user.cpf || '');
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -419,6 +470,14 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
         }
       : addPermissions;
 
+    const isDono = addRole === 'dono';
+    const famAllowanceOptIn = !isDono && addReceiveSalarioFamilia;
+    const eligibleDepsCount = famAllowanceOptIn
+      ? addDependentsList.filter((d) => d.eligibleFamilyAllowance).length
+      : 0;
+    const irpfDepsCount = addDependentsList.filter((d) => d.eligibleIrpfDeduction).length;
+    const parsedSalary = parseFloat(addBaseSalary.replace(',', '.')) || (isDono ? 12500 : 1600);
+
     const newUser: UserAccount = {
       id: `user-${Date.now()}`,
       name: addName.trim(),
@@ -442,6 +501,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       exemptFromPunchClock: isExempt,
       avatarColor,
       permissions: finalPermissions,
+      receiveSalarioFamilia: famAllowanceOptIn,
+      dependentsList: addDependentsList,
+      bankData: {
+        bankName: addBankName || 'Itaú Unibanco',
+        agency: addBankAgency || '',
+        account: addBankAccount || '',
+        accountType: addBankAccountType,
+        pixKey: addBankPix || addCpf
+      },
       ...(addContractType === 'experiencia'
         ? {
             probationDaysInitial: addProbationDaysInitial,
@@ -452,6 +520,26 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     };
 
     StorageService.addUser(newUser);
+
+    // Configuração inicial de folha no Storage
+    const initialConfig: PayrollEmployeeConfig = {
+      employeeId: newUser.id,
+      payrollStoreId: newUser.payrollStoreId || newUser.storeId,
+      monthYear: new Date().toISOString().slice(0, 7),
+      baseSalary: parsedSalary,
+      bonusGratification: 0,
+      insalubridadePct: 0,
+      receiveSalarioFamilia: famAllowanceOptIn,
+      familyAllowanceDependents: eligibleDepsCount,
+      irpfDependentsCount: irpfDepsCount,
+      vtDiscountPct: isDono ? 0 : 6,
+      vrVaDiscountPct: isDono ? 0 : 5,
+      includePunchesExtras: !isDono,
+      includeDelaysDiscount: !isDono,
+      delaysDeductionPolicy: isDono ? 'isento' : 'proporcional',
+      updatedAt: new Date().toISOString()
+    };
+    StorageService.updatePayrollConfig(initialConfig);
 
     // Auto-generate initial schedule for the current month if required to clock in
     if (!newUser.exemptFromPunchClock) {
@@ -501,6 +589,14 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
         }
       : editPermissions;
 
+    const isDono = editRole === 'dono';
+    const famAllowanceOptIn = !isDono && editReceiveSalarioFamilia;
+    const eligibleDepsCount = famAllowanceOptIn
+      ? editDependentsList.filter((d) => d.eligibleFamilyAllowance).length
+      : 0;
+    const irpfDepsCount = editDependentsList.filter((d) => d.eligibleIrpfDeduction).length;
+    const parsedSalary = parseFloat(editBaseSalary.replace(',', '.')) || (isDono ? 12500 : 1600);
+
     const updated: UserAccount = {
       ...editingUser,
       name: editName.trim(),
@@ -522,6 +618,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       lunchDurationMin: editLunchDurationMin,
       mfaEnabled: editMfaEnabled,
       permissions: finalPermissions,
+      receiveSalarioFamilia: famAllowanceOptIn,
+      dependentsList: editDependentsList,
+      bankData: {
+        bankName: editBankName || 'Itaú Unibanco',
+        agency: editBankAgency || '',
+        account: editBankAccount || '',
+        accountType: editBankAccountType,
+        pixKey: editBankPix || editCpf
+      },
       ...(editContractType === 'experiencia'
         ? {
             probationDaysInitial: editProbationDaysInitial,
@@ -540,6 +645,24 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     }
 
     StorageService.updateUser(updated);
+
+    // Sync com as configurações de folha
+    const existingCfg = StorageService.getPayrollConfigs().find((c) => c.employeeId === updated.id);
+    const updatedCfg: PayrollEmployeeConfig = {
+      ...(existingCfg || {
+        employeeId: updated.id,
+        monthYear: new Date().toISOString().slice(0, 7)
+      }),
+      employeeId: updated.id,
+      payrollStoreId: updated.payrollStoreId || updated.storeId,
+      baseSalary: parsedSalary,
+      receiveSalarioFamilia: famAllowanceOptIn,
+      familyAllowanceDependents: eligibleDepsCount,
+      irpfDependentsCount: irpfDepsCount,
+      updatedAt: new Date().toISOString()
+    };
+    StorageService.updatePayrollConfig(updatedCfg);
+
     setEditingUser(null);
     onDataUpdated();
     showToast(`Dados de ${updated.name} atualizados com sucesso!`);
@@ -1933,7 +2056,239 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                 </div>
               </div>
 
-              {/* SEÇÃO 7: SEGURANÇA MFA */}
+              {/* SEÇÃO 7: REMUNERAÇÃO, LOTAÇÃO E BENEFÍCIO SALÁRIO FAMÍLIA (CLT) */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-3">
+                <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block flex items-center justify-between">
+                  <span>7. Remuneração, Lotação & Salário Família</span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Regras CLT / INSS</span>
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Salário Base Mensal (R$) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={addBaseSalary}
+                      onChange={(e) => setAddBaseSalary(e.target.value)}
+                      placeholder="Ex: 1600.00"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Loja Pagadora do Contracheque</label>
+                    <select
+                      value={addPayrollStoreId}
+                      onChange={(e) => setAddPayrollStoreId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    >
+                      {stores.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code}) - {s.razaoSocial || s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Salário Família Opt-in & Warning */}
+                <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={addReceiveSalarioFamilia}
+                      onChange={(e) => setAddReceiveSalarioFamilia(e.target.checked)}
+                      disabled={addRole === 'dono'}
+                      className="rounded bg-zinc-950 border-zinc-700 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="font-bold text-white text-xs">
+                      Cadastrar Benefício Salário Família (CLT / Previdência Social)
+                    </span>
+                  </label>
+
+                  <div className="text-[10px] text-zinc-400 leading-relaxed bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
+                    <p className="text-amber-400 font-semibold mb-1">⚖️ Critérios Legais Obrigatórios:</p>
+                    <p>
+                      O Salário-Família é pago pela Previdência Social aos segurados empregados que recebem remuneração mensal de até o teto legal vigente (<strong>R$ 1.819,26</strong>) e que possuam filhos ou equiparados até 14 anos ou com deficiência (Art. 65 a 70 da Lei 8.213/91).
+                    </p>
+                    <p className="mt-1 text-zinc-400">
+                      <strong>Atenção:</strong> Se o colaborador não apresentou certidão de nascimento, caderneta de vacinação/matrícula escolar ou recebe acima do teto, <strong>mantenha esta opção desmarcada</strong>.
+                    </p>
+                  </div>
+
+                  {/* Dependentes Cadastrados */}
+                  <div className="pt-2 border-t border-zinc-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-300 text-xs">
+                        Dependentes Cadastrados ({addDependentsList.length}):
+                      </span>
+                    </div>
+
+                    {addDependentsList.length > 0 && (
+                      <div className="space-y-1.5">
+                        {addDependentsList.map((dep, idx) => (
+                          <div key={dep.id || idx} className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+                            <div>
+                              <span className="font-bold text-white text-xs block">{dep.name}</span>
+                              <span className="text-[10px] text-zinc-400">
+                                {dep.relationship.toUpperCase()} • Nasc: {dep.birthDate} {dep.cpf ? `• CPF: ${dep.cpf}` : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {dep.eligibleFamilyAllowance && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-950 border border-emerald-500 text-emerald-400 font-bold">
+                                  Sal. Família
+                                </span>
+                              )}
+                              {dep.eligibleIrpfDeduction && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] bg-blue-950 border border-blue-500 text-blue-400 font-bold">
+                                  IRPF
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setAddDependentsList(addDependentsList.filter((_, i) => i !== idx))}
+                                className="text-zinc-500 hover:text-rose-400 p-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Subformulário Adicionar Dependente */}
+                    <div className="p-2.5 rounded-lg bg-zinc-950/70 border border-zinc-800 space-y-2">
+                      <span className="text-[10px] text-zinc-400 font-bold uppercase block">+ Adicionar Novo Dependente</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nome do dependente"
+                          value={depName}
+                          onChange={(e) => setDepName(e.target.value)}
+                          className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-white text-xs"
+                        />
+                        <input
+                          type="date"
+                          placeholder="Nascimento"
+                          value={depBirth}
+                          onChange={(e) => setDepBirth(e.target.value)}
+                          className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-white text-xs font-mono"
+                        />
+                        <input
+                          type="text"
+                          placeholder="CPF (se houver)"
+                          value={depCpf}
+                          onChange={(e) => setDepCpf(e.target.value)}
+                          className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-white text-xs font-mono"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px]">
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1 text-zinc-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={depEligibleFam}
+                              onChange={(e) => setDepEligibleFam(e.target.checked)}
+                              className="rounded text-emerald-500"
+                            />
+                            <span>Salário Família (até 14 anos ou PCD)</span>
+                          </label>
+                          <label className="flex items-center gap-1 text-zinc-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={depEligibleIrpf}
+                              onChange={(e) => setDepEligibleIrpf(e.target.checked)}
+                              className="rounded text-blue-500"
+                            />
+                            <span>Dedução IRPF</span>
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!depName.trim() || !depBirth) {
+                              showToast('Informe o nome e a data de nascimento do dependente.');
+                              return;
+                            }
+                            setAddDependentsList([
+                              ...addDependentsList,
+                              {
+                                id: `dep-${Date.now()}`,
+                                name: depName.trim(),
+                                cpf: depCpf.trim() || undefined,
+                                birthDate: depBirth,
+                                relationship: depRelationship,
+                                eligibleFamilyAllowance: depEligibleFam,
+                                eligibleIrpfDeduction: depEligibleIrpf
+                              }
+                            ]);
+                            setDepName('');
+                            setDepCpf('');
+                            setDepBirth('');
+                          }}
+                          className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
+                        >
+                          Adicionar Dependente
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO 8: DADOS BANCÁRIOS & CHAVE PIX */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-2.5">
+                <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block">
+                  8. Dados Bancários para Depósito do Salário / PIX
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-xs">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Banco</label>
+                    <input
+                      type="text"
+                      value={addBankName}
+                      onChange={(e) => setAddBankName(e.target.value)}
+                      placeholder="Ex: Itaú, Nubank"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-sans"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Agência</label>
+                    <input
+                      type="text"
+                      value={addBankAgency}
+                      onChange={(e) => setAddBankAgency(e.target.value)}
+                      placeholder="0001"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Conta com Dígito</label>
+                    <input
+                      type="text"
+                      value={addBankAccount}
+                      onChange={(e) => setAddBankAccount(e.target.value)}
+                      placeholder="12345-6"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Chave PIX</label>
+                    <input
+                      type="text"
+                      value={addBankPix}
+                      onChange={(e) => setAddBankPix(e.target.value)}
+                      placeholder="CPF, celular, e-mail"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-sans"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO 9: SEGURANÇA MFA */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-950/60 border border-zinc-800">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -2700,6 +3055,235 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                       value={editDefaultShiftEnd}
                       onChange={(e) => setEditDefaultShiftEnd(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO: REMUNERAÇÃO, LOTAÇÃO E BENEFÍCIO SALÁRIO FAMÍLIA (CLT) */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-3">
+                <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block flex items-center justify-between">
+                  <span>Remuneração, Lotação & Salário Família</span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Regras CLT / INSS</span>
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Salário Base Mensal (R$) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editBaseSalary}
+                      onChange={(e) => setEditBaseSalary(e.target.value)}
+                      placeholder="Ex: 1600.00"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Loja Pagadora do Contracheque</label>
+                    <select
+                      value={editPayrollStoreId}
+                      onChange={(e) => setEditPayrollStoreId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    >
+                      {stores.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code}) - {s.razaoSocial || s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Salário Família Opt-in & Warning */}
+                <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editReceiveSalarioFamilia}
+                      onChange={(e) => setEditReceiveSalarioFamilia(e.target.checked)}
+                      disabled={editRole === 'dono'}
+                      className="rounded bg-zinc-950 border-zinc-700 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="font-bold text-white text-xs">
+                      Cadastrar Benefício Salário Família (CLT / Previdência Social)
+                    </span>
+                  </label>
+
+                  <div className="text-[10px] text-zinc-400 leading-relaxed bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
+                    <p className="text-amber-400 font-semibold mb-1">⚖️ Critérios Legais Obrigatórios:</p>
+                    <p>
+                      O Salário-Família é pago pela Previdência Social aos segurados empregados com remuneração mensal de até <strong>R$ 1.819,26</strong> que possuam filhos até 14 anos ou com deficiência. Se este colaborador não tem direito, <strong>mantenha desmarcado</strong>.
+                    </p>
+                  </div>
+
+                  {/* Dependentes Cadastrados */}
+                  <div className="pt-2 border-t border-zinc-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-300 text-xs">
+                        Dependentes Cadastrados ({editDependentsList.length}):
+                      </span>
+                    </div>
+
+                    {editDependentsList.length > 0 && (
+                      <div className="space-y-1.5">
+                        {editDependentsList.map((dep, idx) => (
+                          <div key={dep.id || idx} className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+                            <div>
+                              <span className="font-bold text-white text-xs block">{dep.name}</span>
+                              <span className="text-[10px] text-zinc-400">
+                                {dep.relationship.toUpperCase()} • Nasc: {dep.birthDate} {dep.cpf ? `• CPF: ${dep.cpf}` : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {dep.eligibleFamilyAllowance && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-950 border border-emerald-500 text-emerald-400 font-bold">
+                                  Sal. Família
+                                </span>
+                              )}
+                              {dep.eligibleIrpfDeduction && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] bg-blue-950 border border-blue-500 text-blue-400 font-bold">
+                                  IRPF
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setEditDependentsList(editDependentsList.filter((_, i) => i !== idx))}
+                                className="text-zinc-500 hover:text-rose-400 p-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Subformulário Adicionar Dependente na Edição */}
+                    <div className="p-2.5 rounded-lg bg-zinc-950/70 border border-zinc-800 space-y-2">
+                      <span className="text-[10px] text-zinc-400 font-bold uppercase block">+ Adicionar Novo Dependente</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nome do dependente"
+                          value={depName}
+                          onChange={(e) => setDepName(e.target.value)}
+                          className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-white text-xs"
+                        />
+                        <input
+                          type="date"
+                          placeholder="Nascimento"
+                          value={depBirth}
+                          onChange={(e) => setDepBirth(e.target.value)}
+                          className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-white text-xs font-mono"
+                        />
+                        <input
+                          type="text"
+                          placeholder="CPF (se houver)"
+                          value={depCpf}
+                          onChange={(e) => setDepCpf(e.target.value)}
+                          className="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-white text-xs font-mono"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px]">
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1 text-zinc-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={depEligibleFam}
+                              onChange={(e) => setDepEligibleFam(e.target.checked)}
+                              className="rounded text-emerald-500"
+                            />
+                            <span>Salário Família (até 14 anos ou PCD)</span>
+                          </label>
+                          <label className="flex items-center gap-1 text-zinc-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={depEligibleIrpf}
+                              onChange={(e) => setDepEligibleIrpf(e.target.checked)}
+                              className="rounded text-blue-500"
+                            />
+                            <span>Dedução IRPF</span>
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!depName.trim() || !depBirth) {
+                              showToast('Informe o nome e a data de nascimento do dependente.');
+                              return;
+                            }
+                            setEditDependentsList([
+                              ...editDependentsList,
+                              {
+                                id: `dep-${Date.now()}`,
+                                name: depName.trim(),
+                                cpf: depCpf.trim() || undefined,
+                                birthDate: depBirth,
+                                relationship: depRelationship,
+                                eligibleFamilyAllowance: depEligibleFam,
+                                eligibleIrpfDeduction: depEligibleIrpf
+                              }
+                            ]);
+                            setDepName('');
+                            setDepCpf('');
+                            setDepBirth('');
+                          }}
+                          className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
+                        >
+                          Adicionar Dependente
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO: DADOS BANCÁRIOS & CHAVE PIX */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-2.5">
+                <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block">
+                  Dados Bancários para Depósito do Salário / PIX
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-xs">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Banco</label>
+                    <input
+                      type="text"
+                      value={editBankName}
+                      onChange={(e) => setEditBankName(e.target.value)}
+                      placeholder="Ex: Itaú, Nubank"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-sans"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Agência</label>
+                    <input
+                      type="text"
+                      value={editBankAgency}
+                      onChange={(e) => setEditBankAgency(e.target.value)}
+                      placeholder="0001"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Conta com Dígito</label>
+                    <input
+                      type="text"
+                      value={editBankAccount}
+                      onChange={(e) => setEditBankAccount(e.target.value)}
+                      placeholder="12345-6"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-sans">Chave PIX</label>
+                    <input
+                      type="text"
+                      value={editBankPix}
+                      onChange={(e) => setEditBankPix(e.target.value)}
+                      placeholder="CPF, celular, e-mail"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-sans"
                     />
                   </div>
                 </div>

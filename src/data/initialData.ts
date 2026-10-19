@@ -4,46 +4,78 @@ export const INITIAL_STORES: Store[] = [
   {
     id: 'store-1',
     name: 'Crepelocks Shopping Sul',
+    razaoSocial: 'CREPELOCKS ALIMENTACAO LTDA - FILIAL SHOPPING SUL',
     code: 'LJ-01',
     cnpj: '45.892.120/0001-83',
-    address: 'Av. das Nações, 1500 - Piso L2',
+    stateRegistration: '112.450.890.110',
+    address: 'Av. das Nações, 1500 - Piso L2, Loja 24',
+    neighborhood: 'Vila Mariana',
+    cep: '04037-001',
     city: 'São Paulo - SP',
     active: true,
     managerName: 'Carlos Silveira',
-    phone: '(11) 3456-7890'
+    phone: '(11) 3456-7890',
+    email: 'dp.shoppingsul@crepelocks.com.br',
+    holeriteHeaderTitle: 'RECIBO DE PAGAMENTO DE SALÁRIO',
+    holeriteSubtitle: 'Demonstrativo Mensal de Pagamento de Salário - CLT',
+    holeriteFooterMessage: 'Depósito em conta bancária/PIX. Dúvidas contate o DP Central.'
   },
   {
     id: 'store-2',
     name: 'Crepelocks Centro Histórico',
+    razaoSocial: 'CREPELOCKS ALIMENTACAO LTDA - FILIAL CENTRO',
     code: 'LJ-02',
     cnpj: '45.892.120/0002-64',
+    stateRegistration: '113.889.340.220',
     address: 'Rua Direita, 240',
+    neighborhood: 'Sé',
+    cep: '01002-000',
     city: 'São Paulo - SP',
     active: true,
     managerName: 'Juliana Mendes',
-    phone: '(11) 3210-9876'
+    phone: '(11) 3210-9876',
+    email: 'dp.centro@crepelocks.com.br',
+    holeriteHeaderTitle: 'RECIBO DE PAGAMENTO DE SALÁRIO',
+    holeriteSubtitle: 'Demonstrativo Mensal de Pagamento de Salário - CLT',
+    holeriteFooterMessage: 'Depósito em conta bancária/PIX. Dúvidas contate o DP Central.'
   },
   {
     id: 'store-3',
     name: 'Crepelocks Express Norte',
+    razaoSocial: 'CREPELOCKS ALIMENTACAO LTDA - FILIAL ZONA NORTE',
     code: 'LJ-03',
     cnpj: '45.892.120/0003-45',
+    stateRegistration: '114.992.510.330',
     address: 'Av. Nova Cantareira, 890',
+    neighborhood: 'Tucuruvi',
+    cep: '02340-001',
     city: 'São Paulo - SP',
     active: true,
     managerName: 'Roberto Lima',
-    phone: '(11) 2987-6543'
+    phone: '(11) 2987-6543',
+    email: 'dp.norte@crepelocks.com.br',
+    holeriteHeaderTitle: 'RECIBO DE PAGAMENTO DE SALÁRIO',
+    holeriteSubtitle: 'Demonstrativo Mensal de Pagamento de Salário - CLT',
+    holeriteFooterMessage: 'Depósito em conta bancária/PIX. Dúvidas contate o DP Central.'
   },
   {
     id: 'store-botafogo',
     name: 'Crepelocks Botafogo',
+    razaoSocial: 'CREPELOCKS ALIMENTOS E REFEICOES LTDA - FILIAL BOTAFOGO',
     code: 'LJ-04',
     cnpj: '45.892.120/0004-26',
-    address: 'Praia de Botafogo, 400 - Piso L3',
+    stateRegistration: '87.654.321',
+    address: 'Praia de Botafogo, 400 - Piso L3, Loja 312',
+    neighborhood: 'Botafogo',
+    cep: '22250-040',
     city: 'Rio de Janeiro - RJ',
     active: true,
     managerName: 'Tiago Rodrigues',
-    phone: '(21) 2555-8900'
+    phone: '(21) 2555-8900',
+    email: 'dp.botafogo@crepelocks.com.br',
+    holeriteHeaderTitle: 'RECIBO DE PAGAMENTO DE SALÁRIO',
+    holeriteSubtitle: 'Demonstrativo Mensal de Pagamento de Salário - CLT',
+    holeriteFooterMessage: 'Crédito em conta corrente Itaú / PIX. Documento homologado pelo DP.'
   }
 ];
 
@@ -571,9 +603,11 @@ export const INITIAL_PAYROLL_CONFIGS: PayrollEmployeeConfig[] = [
     irpfDiscountPct: null,
     otherDiscountsAmount: 0,
     otherDiscountsDescription: '',
-    familyAllowanceDependents: 1,
+    familyAllowanceDependents: 0,
+    receiveSalarioFamilia: false,
     includePunchesExtras: false,
     includeDelaysDiscount: false,
+    delaysDeductionPolicy: 'isento',
     notes: 'Pró-labore de Diretor Executivo vinculado à loja Botafogo',
     updatedAt: '2026-10-01'
   }

@@ -54,6 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'escalas', label: 'Escalas (6x1, 5x2 e 12x36)' },
     { id: 'ocorrencias', label: 'Ocorrências & Prontuário' },
     { id: 'folha', label: '💰 Cálculo de Folha & Salários' },
+    { id: 'rh_completo', label: '💼 RH Completo CLT' },
     { id: 'lojas', label: 'Lojas & Unidades' },
     { id: 'colaboradores', label: 'Colaboradores & Acessos' },
     { id: 'relatorios', label: 'Relatórios & Espelhos' }
@@ -81,14 +82,14 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => onTabChange(tabs[0].id)}>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white font-black text-lg shadow-md shadow-emerald-950/40">
-              C
+              {stores[0]?.name?.charAt(0) || 'R'}
             </div>
             <div>
               <span className="font-extrabold text-base tracking-tight text-foreground block leading-tight">
-                CREPELOCKS
+                {stores[0]?.name ? stores[0].name.split(' ')[0].toUpperCase() : 'PORTAL'} RH
               </span>
               <span className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase block">
-                Ponto & Gestão RH
+                Ponto Eletrônico & DP CLT
               </span>
             </div>
           </div>
@@ -103,7 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="bg-transparent text-xs font-semibold text-foreground focus:outline-none cursor-pointer py-1 pr-2"
               >
                 {hasAccessToAllStores && (
-                  <option value="all" className="bg-zinc-900 text-white">Todas as Lojas Crepelocks</option>
+                  <option value="all" className="bg-zinc-900 text-white">Todas as Unidades da Rede</option>
                 )}
                 {stores.map((s) => (
                   <option key={s.id} value={s.id} className="bg-zinc-900 text-white">

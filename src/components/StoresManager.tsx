@@ -50,12 +50,20 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
 
   // New store form state
   const [storeName, setStoreName] = useState<string>('');
+  const [storeRazaoSocial, setStoreRazaoSocial] = useState<string>('');
   const [storeCode, setStoreCode] = useState<string>('');
   const [storeCnpj, setStoreCnpj] = useState<string>('');
+  const [storeStateRegistration, setStoreStateRegistration] = useState<string>('');
   const [storeAddress, setStoreAddress] = useState<string>('');
-  const [storeCity, setStoreCity] = useState<string>('São Paulo - SP');
+  const [storeNeighborhood, setStoreNeighborhood] = useState<string>('');
+  const [storeCep, setStoreCep] = useState<string>('');
+  const [storeCity, setStoreCity] = useState<string>('Rio de Janeiro - RJ');
   const [storePhone, setStorePhone] = useState<string>('');
+  const [storeEmail, setStoreEmail] = useState<string>('');
   const [storeManager, setStoreManager] = useState<string>('');
+  const [storeHeaderTitle, setStoreHeaderTitle] = useState<string>('RECIBO DE PAGAMENTO DE SALÁRIO');
+  const [storeSubtitle, setStoreSubtitle] = useState<string>('Demonstrativo Mensal de Pagamento de Salário - CLT');
+  const [storeFooterMessage, setStoreFooterMessage] = useState<string>('Crédito realizado em conta bancária/PIX.');
 
   const handleCreateStore = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,22 +72,38 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
     StorageService.addStore({
       id: `store-${Date.now()}`,
       name: storeName,
+      razaoSocial: storeRazaoSocial || `${storeName.toUpperCase()} LTDA`,
       code: storeCode.toUpperCase(),
       cnpj: storeCnpj ? formatCnpj(storeCnpj) : undefined,
+      stateRegistration: storeStateRegistration || 'Isento',
       address: storeAddress || 'Av. Principal, 100',
-      city: storeCity || 'São Paulo - SP',
-      phone: storePhone || '(11) 3000-0000',
+      neighborhood: storeNeighborhood || 'Centro',
+      cep: storeCep || '00000-000',
+      city: storeCity || 'Rio de Janeiro - RJ',
+      phone: storePhone || '(21) 2555-8900',
+      email: storeEmail || 'dp.unidade@empresa.com.br',
       managerName: storeManager || 'Gerente a definir',
+      holeriteHeaderTitle: storeHeaderTitle || 'RECIBO DE PAGAMENTO DE SALÁRIO',
+      holeriteSubtitle: storeSubtitle || 'Demonstrativo Mensal de Pagamento de Salário - CLT',
+      holeriteFooterMessage: storeFooterMessage || 'Crédito em conta bancária/PIX. Dúvidas com o DP.',
       active: true
     });
 
     setShowAddModal(false);
     setStoreName('');
+    setStoreRazaoSocial('');
     setStoreCode('');
     setStoreCnpj('');
+    setStoreStateRegistration('');
     setStoreAddress('');
+    setStoreNeighborhood('');
+    setStoreCep('');
     setStorePhone('');
+    setStoreEmail('');
     setStoreManager('');
+    setStoreHeaderTitle('RECIBO DE PAGAMENTO DE SALÁRIO');
+    setStoreSubtitle('Demonstrativo Mensal de Pagamento de Salário - CLT');
+    setStoreFooterMessage('Crédito realizado em conta bancária/PIX.');
     onDataUpdated();
   };
 
@@ -100,7 +124,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
           <Eye className="w-5 h-5 text-amber-400 shrink-0" />
           <div className="text-xs">
             <span className="font-bold text-amber-300 block">Modo Acompanhamento (Perfil Gerente)</span>
-            <span>Você tem acesso aos indicadores e acompanhamento de todas as unidades da rede Crepelocks. O cadastro e edição de lojas são restritos ao Dono.</span>
+            <span>Você tem acesso aos indicadores e acompanhamento de todas as unidades da rede. O cadastro e edição de lojas são restritos ao Dono.</span>
           </div>
         </div>
       )}
@@ -110,7 +134,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Building2 className="w-5 h-5 text-emerald-400" />
-            <span>Gestão de Lojas & Unidades Crepelocks</span>
+            <span>Gestão de Lojas & Unidades da Rede</span>
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
             Cadastre novas franquias/lojas, vincule gerentes e monitore o desempenho operacional por unidade.
@@ -248,7 +272,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-emerald-400" />
-                <span>Cadastrar Nova Loja Crepelocks</span>
+                <span>Cadastrar Nova Unidade / Loja</span>
               </h3>
               <button onClick={() => setShowAddModal(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -257,31 +281,42 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
 
             <form onSubmit={handleCreateStore} className="space-y-3 text-xs">
               <div>
-                <label className="block text-zinc-400 mb-1">Nome da Loja / Unidade</label>
+                <label className="block text-zinc-400 mb-1 font-semibold">Nome Fantasia da Unidade</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Crepelocks Shopping Morumbi"
+                  placeholder="Ex: Unidade Centro"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-zinc-400 mb-1 font-semibold">Razão Social Oficial (Contracheque & TRCT)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: EMPRESA COMERCIO E REFEICOES LTDA - FILIAL CENTRO"
+                  value={storeRazaoSocial}
+                  onChange={(e) => setStoreRazaoSocial(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white uppercase focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block text-zinc-400 mb-1">Código da Unidade</label>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Código</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: LJ-04"
+                    placeholder="LJ-04"
                     value={storeCode}
                     onChange={(e) => setStoreCode(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono uppercase"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-400 mb-1">CNPJ da Loja (Opcional)</label>
+                  <label className="block text-zinc-400 mb-1 font-semibold">CNPJ</label>
                   <input
                     type="text"
                     placeholder="00.000.000/0000-00"
@@ -290,33 +325,42 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                     className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
                   />
                 </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Inscrição Est.</label>
+                  <input
+                    type="text"
+                    placeholder="Isento ou nº"
+                    value={storeStateRegistration}
+                    onChange={(e) => setStoreStateRegistration(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-zinc-400 mb-1">Telefone da Loja</label>
+                <label className="block text-zinc-400 mb-1 font-semibold">Endereço Completo (Logradouro e Número)</label>
                 <input
                   type="text"
-                  placeholder="(11) 3333-4444"
-                  value={storePhone}
-                  onChange={(e) => setStorePhone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-zinc-400 mb-1">Endereço Completo</label>
-                <input
-                  type="text"
-                  placeholder="Av. Roque Petroni Júnior, 1089 - Piso L2"
+                  placeholder="Praia de Botafogo, 400 - Piso L3, Loja 312"
                   value={storeAddress}
                   onChange={(e) => setStoreAddress(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block text-zinc-400 mb-1">Cidade / UF</label>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Bairro</label>
+                  <input
+                    type="text"
+                    placeholder="Botafogo"
+                    value={storeNeighborhood}
+                    onChange={(e) => setStoreNeighborhood(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Cidade / UF</label>
                   <input
                     type="text"
                     value={storeCity}
@@ -325,15 +369,83 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-400 mb-1">Gerente de Loja</label>
+                  <label className="block text-zinc-400 mb-1 font-semibold">CEP</label>
                   <input
                     type="text"
-                    placeholder="Nome do gerente"
-                    value={storeManager}
-                    onChange={(e) => setStoreManager(e.target.value)}
+                    placeholder="22250-040"
+                    value={storeCep}
+                    onChange={(e) => setStoreCep(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Telefone / WhatsApp</label>
+                  <input
+                    type="text"
+                    placeholder="(21) 2555-8900"
+                    value={storePhone}
+                    onChange={(e) => setStorePhone(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
                   />
                 </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">E-mail Corporativo / DP</label>
+                  <input
+                    type="email"
+                    placeholder="dp.unidade@empresa.com.br"
+                    value={storeEmail}
+                    onChange={(e) => setStoreEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1 font-semibold">Gerente Responsável</label>
+                <input
+                  type="text"
+                  placeholder="Nome do gerente"
+                  value={storeManager}
+                  onChange={(e) => setStoreManager(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Título do Cabeçalho do Contracheque</label>
+                  <input
+                    type="text"
+                    placeholder="RECIBO DE PAGAMENTO DE SALÁRIO"
+                    value={storeHeaderTitle}
+                    onChange={(e) => setStoreHeaderTitle(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Subtítulo do Cabeçalho</label>
+                  <input
+                    type="text"
+                    placeholder="Demonstrativo Mensal de Pagamento de Salário - CLT"
+                    value={storeSubtitle}
+                    onChange={(e) => setStoreSubtitle(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1 font-semibold">Mensagem Customizada de Rodapé (Contracheque)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Crédito realizado em conta bancária/PIX."
+                  value={storeFooterMessage}
+                  onChange={(e) => setStoreFooterMessage(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                />
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
@@ -359,11 +471,11 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
       {/* Modal: Edit Store */}
       {editingStore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md p-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-100 shadow-2xl space-y-4">
+          <div className="w-full max-w-lg p-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-100 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Edit2 className="w-4 h-4 text-emerald-400" />
-                <span>Editar Informações da Loja</span>
+                <span>Configurar Dados Oficiais da Loja (Contracheque & TRCT)</span>
               </h3>
               <button onClick={() => setEditingStore(null)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
@@ -372,7 +484,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
 
             <form onSubmit={handleUpdateStore} className="space-y-3 text-xs">
               <div>
-                <label className="block text-zinc-400 mb-1">Nome da Loja</label>
+                <label className="block text-zinc-400 mb-1 font-semibold">Nome Fantasia da Loja</label>
                 <input
                   type="text"
                   required
@@ -382,9 +494,20 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-zinc-400 mb-1 font-semibold">Razão Social Oficial (Emitida no Contracheque)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: EMPRESA COMERCIO E ALIMENTOS LTDA - FILIAL CENTRO"
+                  value={editingStore.razaoSocial || ''}
+                  onChange={(e) => setEditingStore({ ...editingStore, razaoSocial: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white uppercase"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block text-zinc-400 mb-1">Código da Loja</label>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Código da Loja</label>
                   <input
                     type="text"
                     required
@@ -394,7 +517,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-400 mb-1">CNPJ da Loja</label>
+                  <label className="block text-zinc-400 mb-1 font-semibold">CNPJ</label>
                   <input
                     type="text"
                     placeholder="00.000.000/0000-00"
@@ -403,38 +526,158 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                     className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-400 mb-1">Telefone da Loja</label>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Inscrição Estadual</label>
                   <input
                     type="text"
-                    placeholder="(11) 3456-7890"
-                    value={editingStore.phone || ''}
-                    onChange={(e) => setEditingStore({ ...editingStore, phone: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-400 mb-1">Gerente Responsável</label>
-                  <input
-                    type="text"
-                    value={editingStore.managerName || ''}
-                    onChange={(e) => setEditingStore({ ...editingStore, managerName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                    placeholder="Isento ou nº"
+                    value={editingStore.stateRegistration || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, stateRegistration: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-zinc-400 mb-1">Endereço</label>
+                <label className="block text-zinc-400 mb-1 font-semibold">Endereço Completo (Logradouro e Número)</label>
                 <input
                   type="text"
                   value={editingStore.address}
                   onChange={(e) => setEditingStore({ ...editingStore, address: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
                 />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Bairro</label>
+                  <input
+                    type="text"
+                    placeholder="Bairro"
+                    value={editingStore.neighborhood || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, neighborhood: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Cidade / UF</label>
+                  <input
+                    type="text"
+                    value={editingStore.city}
+                    onChange={(e) => setEditingStore({ ...editingStore, city: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">CEP</label>
+                  <input
+                    type="text"
+                    placeholder="00000-000"
+                    value={editingStore.cep || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, cep: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Telefone da Loja</label>
+                  <input
+                    type="text"
+                    placeholder="(21) 2555-8900"
+                    value={editingStore.phone || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, phone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">E-mail Corporativo / DP</label>
+                  <input
+                    type="email"
+                    placeholder="dp.unidade@empresa.com.br"
+                    value={editingStore.email || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, email: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1 font-semibold">Gerente Responsável</label>
+                <input
+                  type="text"
+                  value={editingStore.managerName || ''}
+                  onChange={(e) => setEditingStore({ ...editingStore, managerName: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                />
+              </div>
+
+              {/* SEÇÃO CONFIGURAÇÃO DO CONTRACHEQUE */}
+              <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/15 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-emerald-300 font-bold text-xs flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                    Personalização do Cabeçalho & Rodapé do Contracheque
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Exclusivo desta Loja</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-semibold">Título Principal do Cabeçalho</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: RECIBO DE PAGAMENTO DE SALÁRIO"
+                      value={editingStore.holeriteHeaderTitle || ''}
+                      onChange={(e) => setEditingStore({ ...editingStore, holeriteHeaderTitle: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-semibold">Subtítulo do Cabeçalho</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Demonstrativo Mensal de Pagamento de Salário - CLT"
+                      value={editingStore.holeriteSubtitle || ''}
+                      onChange={(e) => setEditingStore({ ...editingStore, holeriteSubtitle: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Mensagem Customizada de Rodapé (Contracheque)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Crédito realizado em conta corrente Itaú / PIX."
+                    value={editingStore.holeriteFooterMessage || ''}
+                    onChange={(e) => setEditingStore({ ...editingStore, holeriteFooterMessage: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                  />
+                </div>
+
+                {/* PRÉ-VISUALIZAÇÃO AO VIVO DO CABEÇALHO */}
+                <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 text-[11px] space-y-1 font-mono">
+                  <span className="text-[10px] text-zinc-500 uppercase font-sans font-bold tracking-wider block">
+                    Pré-visualização do Cabeçalho Oficial:
+                  </span>
+                  <div className="text-white font-bold">{editingStore.holeriteHeaderTitle || 'RECIBO DE PAGAMENTO DE SALÁRIO'}</div>
+                  <div className="text-zinc-400 text-[10px]">{editingStore.holeriteSubtitle || 'Demonstrativo Mensal de Pagamento de Salário - CLT'}</div>
+                  <div className="text-zinc-300 pt-1">
+                    <strong>Empresa:</strong> {editingStore.razaoSocial || editingStore.name}
+                  </div>
+                  <div className="text-zinc-400 text-[10px]">
+                    <strong>CNPJ:</strong> {editingStore.cnpj || 'Não informado'} • <strong>I.E.:</strong> {editingStore.stateRegistration || 'Isento'}
+                  </div>
+                  <div className="text-zinc-400 text-[10px]">
+                    <strong>Endereço:</strong> {editingStore.address}{editingStore.neighborhood ? ` - ${editingStore.neighborhood}` : ''}, {editingStore.city} {editingStore.cep ? `• CEP: ${editingStore.cep}` : ''}
+                  </div>
+                  <div className="text-zinc-400 text-[10px]">
+                    <strong>Contato:</strong> {editingStore.phone || 'N/A'} {editingStore.email ? `• ${editingStore.email}` : ''}
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">

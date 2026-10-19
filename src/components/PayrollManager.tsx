@@ -27,7 +27,15 @@ import {
   ChevronDown,
   ChevronRight,
   ArrowUpDown,
-  Globe
+  Globe,
+  Calendar,
+  Clock,
+  Umbrella,
+  Coins,
+  Briefcase,
+  Settings,
+  Check,
+  X
 } from 'lucide-react';
 import {
   UserAccount,
@@ -99,12 +107,34 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
   const [editingEmployee, setEditingEmployee] = useState<UserAccount | null>(null);
   const [viewingHolerite, setViewingHolerite] = useState<PayrollCalculationResult | null>(null);
 
+  // Active sub-tab: Folha Mensal or Férias & 13º
+  const [activeSubTab, setActiveSubTab] = useState<'folha' | 'ferias_13'>('folha');
+
+  // Store Header Configuration Modal
+  const [showStoreHeaderModal, setShowStoreHeaderModal] = useState<boolean>(false);
+  const [selectedHeaderStoreId, setSelectedHeaderStoreId] = useState<string>(stores[0]?.id || '');
+  const [headerRazaoSocial, setHeaderRazaoSocial] = useState<string>('');
+  const [headerName, setHeaderName] = useState<string>('');
+  const [headerCnpj, setHeaderCnpj] = useState<string>('');
+  const [headerStateRegistration, setHeaderStateRegistration] = useState<string>('');
+  const [headerAddress, setHeaderAddress] = useState<string>('');
+  const [headerNeighborhood, setHeaderNeighborhood] = useState<string>('');
+  const [headerCep, setHeaderCep] = useState<string>('');
+  const [headerCity, setHeaderCity] = useState<string>('');
+  const [headerPhone, setHeaderPhone] = useState<string>('');
+  const [headerEmail, setHeaderEmail] = useState<string>('');
+  const [headerTitle, setHeaderTitle] = useState<string>('RECIBO DE PAGAMENTO DE SALÁRIO');
+  const [headerSubtitle, setHeaderSubtitle] = useState<string>('Demonstrativo Mensal de Pagamento de Salário - CLT');
+  const [headerFooterMessage, setHeaderFooterMessage] = useState<string>('Crédito realizado em conta bancária/PIX.');
+
   // Form state for modal editor
   const [formPayrollStoreId, setFormPayrollStoreId] = useState<string>('');
   const [formBaseSalary, setFormBaseSalary] = useState<string>('0');
   const [formBonusGratification, setFormBonusGratification] = useState<string>('0');
   const [formInsalubridadePct, setFormInsalubridadePct] = useState<string>('0');
+  const [formReceiveSalarioFamilia, setFormReceiveSalarioFamilia] = useState<boolean>(false);
   const [formDependents, setFormDependents] = useState<string>('0');
+  const [formIrpfDependents, setFormIrpfDependents] = useState<string>('0');
   const [formVtDiscountPct, setFormVtDiscountPct] = useState<string>('6');
   const [formVrVaDiscountPct, setFormVrVaDiscountPct] = useState<string>('5');
   const [formInssManualPct, setFormInssManualPct] = useState<string>(''); // Vazio = cálculo automático CLT
@@ -117,7 +147,16 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
   const [formOtherDiscountsDescription, setFormOtherDiscountsDescription] = useState<string>('');
   const [formIncludeExtras, setFormIncludeExtras] = useState<boolean>(true);
   const [formIncludeDelays, setFormIncludeDelays] = useState<boolean>(true);
+  const [formDelaysPolicy, setFormDelaysPolicy] = useState<'proporcional' | 'com_dsr' | 'isento'>('proporcional');
+  const [formManualDelaysMin, setFormManualDelaysMin] = useState<string>('');
+  const [formManualDelaysR$, setFormManualDelaysR$] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
+
+  // Férias & 13º Salário Simulator state
+  const [feriasEmployeeId, setFeriasEmployeeId] = useState<string>(users[0]?.id || '');
+  const [feriasDays, setFeriasDays] = useState<number>(30);
+  const [feriasSellDays, setFeriasSellDays] = useState<number>(0);
+  const [feriasAdvance13th, setFeriasAdvance13th] = useState<boolean>(false);
 
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [showInssTable, setShowInssTable] = useState<boolean>(true);
@@ -251,7 +290,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
         ...networkTotals,
         employeeCount: allPayrollResults.length,
         title: 'Toda a Rede (Consolidado)',
-        subtitle: 'Soma de todas as lojas e colaboradores da rede Crepelocks'
+        subtitle: 'Soma de todas as lojas e colaboradores cadastrados na rede'
       };
     }
     const currentStoreSummary = storePayrollSummaries.find((s) => s.store.id === selectedStore);
@@ -271,6 +310,76 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     };
   }, [selectedStore, networkTotals, allPayrollResults.length, storePayrollSummaries]);
 
+  // Store Header Configuration Helpers
+  const handleOpenStoreHeaderModal = (storeId?: string) => {
+    const targetId = storeId || (selectedStore !== 'all' ? selectedStore : stores[0]?.id) || stores[0]?.id;
+    const st = stores.find((s) => s.id === targetId) || stores[0];
+    if (!st) return;
+
+    setSelectedHeaderStoreId(st.id);
+    setHeaderName(st.name || '');
+    setHeaderRazaoSocial(st.razaoSocial || st.name || '');
+    setHeaderCnpj(st.cnpj || '');
+    setHeaderStateRegistration(st.stateRegistration || '');
+    setHeaderAddress(st.address || '');
+    setHeaderNeighborhood(st.neighborhood || '');
+    setHeaderCep(st.cep || '');
+    setHeaderCity(st.city || '');
+    setHeaderPhone(st.phone || '');
+    setHeaderEmail(st.email || '');
+    setHeaderTitle(st.holeriteHeaderTitle || 'RECIBO DE PAGAMENTO DE SALÁRIO');
+    setHeaderSubtitle(st.holeriteSubtitle || 'Demonstrativo Mensal de Pagamento de Salário - CLT');
+    setHeaderFooterMessage(st.holeriteFooterMessage || 'Crédito realizado em conta bancária/PIX.');
+    setShowStoreHeaderModal(true);
+  };
+
+  const handleSelectHeaderStore = (storeId: string) => {
+    const st = stores.find((s) => s.id === storeId);
+    if (!st) return;
+    setSelectedHeaderStoreId(st.id);
+    setHeaderName(st.name || '');
+    setHeaderRazaoSocial(st.razaoSocial || st.name || '');
+    setHeaderCnpj(st.cnpj || '');
+    setHeaderStateRegistration(st.stateRegistration || '');
+    setHeaderAddress(st.address || '');
+    setHeaderNeighborhood(st.neighborhood || '');
+    setHeaderCep(st.cep || '');
+    setHeaderCity(st.city || '');
+    setHeaderPhone(st.phone || '');
+    setHeaderEmail(st.email || '');
+    setHeaderTitle(st.holeriteHeaderTitle || 'RECIBO DE PAGAMENTO DE SALÁRIO');
+    setHeaderSubtitle(st.holeriteSubtitle || 'Demonstrativo Mensal de Pagamento de Salário - CLT');
+    setHeaderFooterMessage(st.holeriteFooterMessage || 'Crédito realizado em conta bancária/PIX.');
+  };
+
+  const handleSaveStoreHeader = (e: React.FormEvent) => {
+    e.preventDefault();
+    const st = stores.find((s) => s.id === selectedHeaderStoreId);
+    if (!st) return;
+
+    const updated: Store = {
+      ...st,
+      name: headerName.trim() || st.name,
+      razaoSocial: headerRazaoSocial.trim() || headerName.trim(),
+      cnpj: headerCnpj.trim() || undefined,
+      stateRegistration: headerStateRegistration.trim() || undefined,
+      address: headerAddress.trim() || st.address,
+      neighborhood: headerNeighborhood.trim() || undefined,
+      cep: headerCep.trim() || undefined,
+      city: headerCity.trim() || st.city,
+      phone: headerPhone.trim() || undefined,
+      email: headerEmail.trim() || undefined,
+      holeriteHeaderTitle: headerTitle.trim() || 'RECIBO DE PAGAMENTO DE SALÁRIO',
+      holeriteSubtitle: headerSubtitle.trim() || 'Demonstrativo Mensal de Pagamento de Salário - CLT',
+      holeriteFooterMessage: headerFooterMessage.trim() || 'Crédito em conta bancária/PIX.'
+    };
+
+    StorageService.updateStore(updated);
+    setShowStoreHeaderModal(false);
+    onDataUpdated();
+    showToast(`Cabeçalho e dados cadastrais da loja "${updated.name}" atualizados com sucesso!`);
+  };
+
   // Open modal editor for employee
   const handleOpenEdit = (user: UserAccount) => {
     const cfg = configs[user.id];
@@ -281,7 +390,9 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     setFormBaseSalary(cfg?.baseSalary !== undefined ? String(cfg.baseSalary) : (user.role === 'dono' ? '10000' : '2000'));
     setFormBonusGratification(cfg?.bonusGratification !== undefined ? String(cfg.bonusGratification) : '0');
     setFormInsalubridadePct(cfg?.insalubridadePct !== undefined ? String(cfg.insalubridadePct) : '0');
-    setFormDependents(cfg?.familyAllowanceDependents !== undefined ? String(cfg.familyAllowanceDependents) : '0');
+    setFormReceiveSalarioFamilia(user.role !== 'dono' && Boolean(cfg?.receiveSalarioFamilia ?? user.receiveSalarioFamilia ?? false));
+    setFormDependents(cfg?.familyAllowanceDependents !== undefined ? String(cfg.familyAllowanceDependents) : (user.dependentsList?.filter(d => d.eligibleFamilyAllowance).length ? String(user.dependentsList.filter(d => d.eligibleFamilyAllowance).length) : '0'));
+    setFormIrpfDependents(cfg?.irpfDependentsCount !== undefined ? String(cfg.irpfDependentsCount) : (user.dependentsList?.filter(d => d.eligibleIrpfDeduction).length ? String(user.dependentsList.filter(d => d.eligibleIrpfDeduction).length) : '0'));
     setFormVtDiscountPct(cfg?.vtDiscountPct !== undefined ? String(cfg.vtDiscountPct) : (user.role === 'dono' ? '0' : '6'));
     setFormVrVaDiscountPct(cfg?.vrVaDiscountPct !== undefined ? String(cfg.vrVaDiscountPct) : (user.role === 'dono' ? '0' : '5'));
     setFormInssManualPct(cfg?.inssDiscountPct !== null && cfg?.inssDiscountPct !== undefined ? String(cfg.inssDiscountPct) : '');
@@ -293,7 +404,10 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     setFormOtherDiscountsAmount(cfg?.otherDiscountsAmount !== undefined ? String(cfg.otherDiscountsAmount) : '0');
     setFormOtherDiscountsDescription(cfg?.otherDiscountsDescription || '');
     setFormIncludeExtras(cfg?.includePunchesExtras !== false);
-    setFormIncludeDelays(cfg?.includeDelaysDiscount === true);
+    setFormIncludeDelays(cfg?.includeDelaysDiscount !== false);
+    setFormDelaysPolicy(cfg?.delaysDeductionPolicy || 'proporcional');
+    setFormManualDelaysMin(cfg?.manualDelaysMinutesOverride != null ? String(cfg.manualDelaysMinutesOverride) : '');
+    setFormManualDelaysR$(cfg?.manualDelaysDiscountOverride != null ? String(cfg.manualDelaysDiscountOverride) : '');
     setFormNotes(cfg?.notes || '');
   };
 
@@ -342,6 +456,9 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
       return isNaN(n) ? null : n;
     };
 
+    const isNonOwner = editingEmployee.role !== 'dono';
+    const isFamAllowanceEnabled = isNonOwner && formReceiveSalarioFamilia;
+
     const updatedConfig: PayrollEmployeeConfig = {
       employeeId: editingEmployee.id,
       payrollStoreId: formPayrollStoreId,
@@ -349,7 +466,9 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
       baseSalary: parseNum(formBaseSalary),
       bonusGratification: parseNum(formBonusGratification),
       insalubridadePct: parseNum(formInsalubridadePct),
-      familyAllowanceDependents: Math.round(parseNum(formDependents)),
+      receiveSalarioFamilia: isFamAllowanceEnabled,
+      familyAllowanceDependents: isFamAllowanceEnabled ? Math.max(0, Math.round(parseNum(formDependents))) : 0,
+      irpfDependentsCount: Math.max(0, Math.round(parseNum(formIrpfDependents))),
       vtDiscountPct: parseNum(formVtDiscountPct),
       vrVaDiscountPct: parseNum(formVrVaDiscountPct),
       inssDiscountPct: parseNullableNum(formInssManualPct),
@@ -362,6 +481,9 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
       otherDiscountsDescription: formOtherDiscountsDescription.trim(),
       includePunchesExtras: formIncludeExtras,
       includeDelaysDiscount: formIncludeDelays,
+      delaysDeductionPolicy: formDelaysPolicy,
+      manualDelaysMinutesOverride: parseNullableNum(formManualDelaysMin),
+      manualDelaysDiscountOverride: parseNullableNum(formManualDelaysR$),
       notes: formNotes.trim(),
       updatedAt: new Date().toISOString()
     };
@@ -369,16 +491,22 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     setConfigs((prev) => ({ ...prev, [editingEmployee.id]: updatedConfig }));
     StorageService.updatePayrollConfig(updatedConfig);
 
-    // Sync payrollStoreId on user account as well
+    // Sync payrollStoreId and receiveSalarioFamilia on user account as well
     const updatedUser: UserAccount = {
       ...editingEmployee,
-      payrollStoreId: formPayrollStoreId
+      payrollStoreId: formPayrollStoreId,
+      receiveSalarioFamilia: isFamAllowanceEnabled
     };
     StorageService.updateUser(updatedUser);
 
     onDataUpdated();
     setEditingEmployee(null);
     showToast(`Configuração de folha de ${editingEmployee.name} salva com sucesso!`);
+  };
+
+  const openHeaderModalForStore = (storeId: string) => {
+    handleSelectHeaderStore(storeId);
+    setShowStoreHeaderModal(true);
   };
 
   // Export full payroll report to CSV
@@ -442,7 +570,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `folha_pagamento_crepelocks_${selectedMonth}.csv`);
+    link.setAttribute('download', `folha_pagamento_${selectedMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     setTimeout(() => {
@@ -464,59 +592,78 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
       format: 'a4'
     });
 
+    const headerTitle = res.holeriteHeaderTitle || store?.holeriteHeaderTitle || (res.role === 'dono' ? 'DEMONSTRATIVO DE PRÓ-LABORE' : 'RECIBO DE PAGAMENTO DE SALÁRIO');
+    const headerSubtitle = res.holeriteSubtitle || store?.holeriteSubtitle || 'Demonstrativo Mensal de Pagamento de Salário - CLT';
+    const storeRazaoSocial = res.storeRazaoSocial || store?.razaoSocial || store?.name || 'Unidade Operacional';
+    const storeCnpj = res.storeCnpj || store?.cnpj || 'Não informado';
+    const storeIE = res.storeStateRegistration || store?.stateRegistration || 'Isento';
+    const storeAddress = res.storeAddress || store?.address || 'Endereço da Unidade';
+    const storeNeighborhood = res.storeNeighborhood || store?.neighborhood || '';
+    const storeCity = res.storeCity || store?.city || '';
+    const storeCep = res.storeCep || store?.cep || '';
+    const storePhone = res.storePhone || store?.phone || '';
+
     // Header Card
-    doc.setFillColor(6, 78, 59); // Emerald-900
-    doc.rect(14, 12, 182, 22, 'F');
+    doc.setFillColor(15, 23, 42); // Slate-900 elegante
+    doc.rect(14, 12, 182, 23, 'F');
 
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.text('CREPELOCKS BRASIL - RECIBO DE PAGAMENTO DE SALÁRIO', 20, 21);
+    doc.setFontSize(13);
+    doc.text(headerTitle.toUpperCase(), 18, 20);
 
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(209, 250, 229);
-    doc.text(`DEMONSTRATIVO DE HOLERITE / PRÓ-LABORE • COMPETÊNCIA: ${res.monthYear}`, 20, 29);
+    doc.text(`${headerSubtitle} • COMPETÊNCIA: ${res.monthYear} • CÓDIGO DA UNIDADE: ${res.storeCode || store?.code || 'LJ'}`, 18, 26);
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`EMPREGADOR: ${storeRazaoSocial.toUpperCase()}`, 18, 31.5);
 
     // Employee & Company info box
     doc.setFillColor(248, 250, 252);
-    doc.rect(14, 38, 182, 28, 'F');
+    doc.rect(14, 37, 182, 30, 'F');
     doc.setDrawColor(203, 213, 225);
-    doc.rect(14, 38, 182, 28, 'D');
+    doc.rect(14, 37, 182, 30, 'D');
 
     doc.setTextColor(15, 23, 42);
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Empresa: CREPELOCKS ALIMENTAÇÃO LTDA`, 18, 44);
-    doc.text(`CNPJ: ${store?.cnpj || '45.892.120/0001-83'}`, 120, 44);
-
-    doc.text(`Colaborador(a): ${res.employeeName.toUpperCase()}`, 18, 51);
-    doc.text(`CPF: ${emp?.cpf || '000.000.000-00'}`, 120, 51);
+    doc.text(`Razão Social: ${storeRazaoSocial}`, 18, 43);
+    doc.text(`CNPJ: ${storeCnpj} • I.E.: ${storeIE}`, 115, 43);
 
     doc.setFont('helvetica', 'normal');
-    doc.text(`Cargo / Função: ${res.positionTitle} (${res.role === 'dono' ? 'Pró-Labore Dono' : 'CLT'})`, 18, 58);
-    doc.text(`Lotação / Pagamento: ${store?.name || 'Sede Administrativa'} (${store?.code || 'LJ'})`, 120, 58);
+    doc.text(`Endereço: ${storeAddress}${storeNeighborhood ? ` - ${storeNeighborhood}` : ''}, ${storeCity}${storeCep ? ` • CEP: ${storeCep}` : ''}`, 18, 49);
+    doc.text(`Contato: ${storePhone || 'DP da Unidade'}`, 115, 49);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Colaborador(a): ${res.employeeName.toUpperCase()}`, 18, 56);
+    doc.text(`CPF: ${emp?.cpf || '000.000.000-00'}`, 115, 56);
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Cargo / Função: ${res.positionTitle} (${res.role === 'dono' ? 'Diretoria / Pró-Labore' : 'CLT'})`, 18, 62);
+    doc.text(`Lotação / Pagamento: ${res.storeName} (${res.storeCode || store?.code || 'LJ'})`, 115, 62);
 
     const contractDesc = emp?.contractType === 'experiencia'
       ? `Contrato de Experiência (${emp.probationDaysInitial || 45}d${emp.probationExtended ? ` + ${emp.probationDaysExtension || 45}d` : ''})`
-      : 'Contrato por Prazo Indeterminado';
-    doc.text(`Admissão: ${emp?.admissionDate || 'Não informada'}`, 18, 64);
-    doc.text(`Vínculo: ${contractDesc}`, 120, 64);
+      : res.role === 'dono' ? 'Contrato Social / Diretoria' : 'Contrato por Prazo Indeterminado';
+    doc.text(`Admissão: ${emp?.admissionDate || 'Não informada'}`, 18, 65.5);
+    doc.text(`Vínculo: ${contractDesc}`, 115, 65.5);
 
     // Table Header
     doc.setFillColor(30, 41, 59);
-    doc.rect(14, 70, 182, 8, 'F');
+    doc.rect(14, 69, 182, 7.5, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('CÓD', 18, 75.5);
-    doc.text('DESCRIÇÃO DA VERBA / RUBRICA', 32, 75.5);
-    doc.text('REF / %', 105, 75.5);
-    doc.text('PROVENTOS (R$)', 130, 75.5);
-    doc.text('DESCONTOS (R$)', 165, 75.5);
+    doc.text('CÓD', 18, 74);
+    doc.text('DESCRIÇÃO DA VERBA / RUBRICA', 32, 74);
+    doc.text('REF / %', 105, 74);
+    doc.text('PROVENTOS (R$)', 130, 74);
+    doc.text('DESCONTOS (R$)', 165, 74);
 
     // Table Rows
-    let y = 84;
+    let y = 82;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
@@ -551,6 +698,16 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
       });
     }
 
+    if (res.dsrExtraHoursPay > 0) {
+      items.push({
+        cod: '055',
+        desc: 'DSR SOBRE HORAS EXTRAS (SÚMULA 172 TST)',
+        ref: '1/6',
+        prov: res.dsrExtraHoursPay,
+        descVal: 0
+      });
+    }
+
     if (res.insalubridadePay > 0) {
       items.push({
         cod: '032',
@@ -564,8 +721,8 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     if (res.familyAllowancePay > 0) {
       items.push({
         cod: '045',
-        desc: 'SALÁRIO FAMÍLIA (DEPENDENTES)',
-        ref: 'Legal',
+        desc: `SALÁRIO FAMÍLIA PREVIDÊNCIA SOCIAL (${res.familyAllowanceCount} cota${res.familyAllowanceCount > 1 ? 's' : ''})`,
+        ref: `${res.familyAllowanceCount} Cotas`,
         prov: res.familyAllowancePay,
         descVal: 0
       });
@@ -611,6 +768,29 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
       });
     }
 
+    if (res.delaysDiscount > 0) {
+      const delayHrs = Math.floor(res.delaysMinutesCount / 60);
+      const delayMins = res.delaysMinutesCount % 60;
+      const refStr = delayHrs > 0 ? `${delayHrs}h ${delayMins}m` : `${res.delaysMinutesCount} min`;
+      items.push({
+        cod: '301',
+        desc: `DESCONTO DE ATRASOS / SAÍDAS ANTECIPADAS (${refStr})`,
+        ref: refStr,
+        prov: 0,
+        descVal: res.delaysDiscount
+      });
+    }
+
+    if (res.dsrLossDiscount > 0) {
+      items.push({
+        cod: '305',
+        desc: 'DESCONTO REPOUSO SEMANAL REMUNERADO (LEI 605/49)',
+        ref: '1 Dia',
+        prov: 0,
+        descVal: res.dsrLossDiscount
+      });
+    }
+
     if (res.otherDiscounts > 0) {
       items.push({
         cod: '990',
@@ -624,73 +804,90 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
     items.forEach((item, idx) => {
       if (idx % 2 === 1) {
         doc.setFillColor(248, 250, 252);
-        doc.rect(14, y - 4, 182, 6.5, 'F');
+        doc.rect(14, y - 4, 182, 6, 'F');
       }
       doc.text(item.cod, 18, y);
       doc.text(item.desc, 32, y);
       doc.text(item.ref, 107, y);
       doc.text(item.prov > 0 ? item.prov.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '-', 140, y, { align: 'right' });
       doc.text(item.descVal > 0 ? item.descVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '-', 185, y, { align: 'right' });
-      y += 6.5;
+      y += 6;
     });
 
     // Box Totals
-    const boxY = Math.max(y + 6, 175);
+    const boxY = Math.max(y + 4, 168);
     doc.setFillColor(241, 245, 249);
-    doc.rect(14, boxY, 182, 28, 'F');
+    doc.rect(14, boxY, 182, 26, 'F');
     doc.setDrawColor(203, 213, 225);
-    doc.rect(14, boxY, 182, 28, 'D');
+    doc.rect(14, boxY, 182, 26, 'D');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
-    doc.text('TOTAL DE VENCIMENTOS (BRUTO)', 20, boxY + 7);
-    doc.text(`R$ ${res.totalGross.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 75, boxY + 7);
+    doc.text('TOTAL DE VENCIMENTOS (BRUTO)', 20, boxY + 6.5);
+    doc.text(`R$ ${res.totalGross.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 75, boxY + 6.5);
 
-    doc.text('TOTAL DE DESCONTOS', 110, boxY + 7);
-    doc.text(`R$ ${res.totalDiscounts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 160, boxY + 7);
+    doc.text('TOTAL DE DESCONTOS', 110, boxY + 6.5);
+    doc.text(`R$ ${res.totalDiscounts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 160, boxY + 6.5);
 
     // Salário Líquido Destacado
-    doc.setFillColor(6, 78, 59);
-    doc.roundedRect(18, boxY + 12, 174, 12, 2, 2, 'F');
+    doc.setFillColor(6, 78, 59); // Emerald-900
+    doc.roundedRect(18, boxY + 11, 174, 11, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.text('VALOR LÍQUIDO A RECEBER:', 25, boxY + 19.5);
-    doc.setFontSize(12);
-    doc.text(`R$ ${res.netSalary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 140, boxY + 20);
+    doc.setFontSize(9.5);
+    doc.text('VALOR LÍQUIDO A RECEBER:', 25, boxY + 18);
+    doc.setFontSize(11.5);
+    doc.text(`R$ ${res.netSalary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 140, boxY + 18.5);
 
     // Base de Cálculo & FGTS
-    const baseCalcY = boxY + 34;
+    const baseCalcY = boxY + 29;
     doc.setFillColor(255, 255, 255);
-    doc.rect(14, baseCalcY, 182, 12, 'D');
+    doc.rect(14, baseCalcY, 182, 11, 'D');
     doc.setFontSize(7.5);
     doc.setTextColor(71, 85, 105);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Salário Base: R$ ${res.baseSalary.toFixed(2)}`, 18, baseCalcY + 5);
-    doc.text(`Base Cálc. INSS: R$ ${res.totalGross.toFixed(2)}`, 60, baseCalcY + 5);
-    doc.text(`Base Cálc. FGTS: R$ ${res.totalGross.toFixed(2)}`, 110, baseCalcY + 5);
-    doc.text(`FGTS do Mês (8%): R$ ${res.fgtsEmployer.toFixed(2)}`, 150, baseCalcY + 5);
+    doc.text(`Salário Base: R$ ${res.baseSalary.toFixed(2)}`, 18, baseCalcY + 4.5);
+    doc.text(`Base Cálc. INSS: R$ ${res.inssBase.toFixed(2)}`, 60, baseCalcY + 4.5);
+    doc.text(`Base Cálc. FGTS: R$ ${res.fgtsBase.toFixed(2)}`, 110, baseCalcY + 4.5);
+    doc.text(`FGTS do Mês (8%): R$ ${res.fgtsEmployer.toFixed(2)}`, 150, baseCalcY + 4.5);
 
-    doc.text(`Base Cálc. IRRF: R$ ${Math.max(0, res.totalGross - res.inssDiscount).toFixed(2)}`, 18, baseCalcY + 10);
-    doc.text(`Faixa IRRF: ${res.irpfEffectivePct}%`, 60, baseCalcY + 10);
-    doc.text(`Código de Autenticação: ${res.employeeId.slice(0, 8).toUpperCase()}-${Date.now().toString(16).toUpperCase()}`, 110, baseCalcY + 10);
+    doc.text(`Base Cálc. IRRF: R$ ${res.irpfBase.toFixed(2)}`, 18, baseCalcY + 9);
+    doc.text(`Faixa IRRF: ${res.irpfEffectivePct}%`, 60, baseCalcY + 9);
+    doc.text(`Código de Autenticação: ${res.employeeId.slice(0, 8).toUpperCase()}-${Date.now().toString(16).toUpperCase()}`, 110, baseCalcY + 9);
 
-    // Signatures
-    const sigY = baseCalcY + 24;
-    doc.setDrawColor(148, 163, 184);
-    doc.line(20, sigY, 90, sigY);
-    doc.line(115, sigY, 185, sigY);
+    // Mensagem da Loja
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Observações: ${res.holeriteFooterMessage || store?.holeriteFooterMessage || 'Crédito realizado em conta bancária/PIX. Dúvidas com o RH/DP.'}`, 18, baseCalcY + 15);
+
+    // Canhoto destacável de quitação salarial
+    const cutY = baseCalcY + 21;
+    doc.setLineDashPattern([2, 1], 0);
+    doc.setDrawColor(203, 213, 225);
+    doc.line(14, cutY, 196, cutY);
+    doc.setLineDashPattern([], 0);
 
     doc.setFontSize(7.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Assinatura do Empregador / Crepelocks', 26, sigY + 4);
-    doc.text('Assinatura do Colaborador / Recibo', 124, sigY + 4);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`RECIBO DE QUITAÇÃO DE PAGAMENTO SALARIAL • COMPETÊNCIA: ${res.monthYear}`, 18, cutY + 6);
 
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text('DECLARO TER RECEBIDO A IMPORTÂNCIA LÍQUIDA ACIMA DISCRIMINADA.', 40, sigY + 11);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Recebi de ${storeRazaoSocial.toUpperCase()} (CNPJ: ${storeCnpj}) a quantia líquida de R$ ${res.netSalary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, correspondente à remuneração discriminada neste comprovante.`, 18, cutY + 11);
+
+    const sigY = cutY + 22;
+    doc.setDrawColor(148, 163, 184);
+    doc.line(18, sigY, 70, sigY);
+    doc.line(90, sigY, 185, sigY);
+
+    doc.setFontSize(7);
+    doc.setTextColor(30, 41, 59);
+    doc.text('Data: _____ / _____ / _________', 22, sigY + 4);
+    doc.text(`Assinatura: ${res.employeeName.toUpperCase()} (CPF: ${emp?.cpf || '000.000.000-00'})`, 95, sigY + 4);
 
     doc.save(`holerite_${res.employeeName.toLowerCase().replace(/\s+/g, '_')}_${res.monthYear}.pdf`);
-    showToast(`Holerite de ${res.employeeName} gerado com sucesso!`);
+    showToast(`Holerite oficial de ${res.employeeName} gerado com sucesso!`);
   };
 
   return (
@@ -708,7 +905,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="font-semibold">{notification.message}</span>
           </div>
-          <span className="text-[10px] text-zinc-400">Crepelocks Folha</span>
+          <span className="text-[10px] text-zinc-400">Notificação DP</span>
         </div>
       )}
 
@@ -731,10 +928,22 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              const currentStoreId = selectedStore !== 'all' ? selectedStore : (stores[0]?.id || 'store-1');
+              openHeaderModalForStore(currentStoreId);
+            }}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow hover:scale-[1.02] cursor-pointer"
+            title="Personalize as informações oficiais exibidas no cabeçalho do contracheque desta unidade"
+          >
+            <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Configurar Cabeçalho do Contracheque</span>
+          </button>
+
           {canDownload ? (
             <button
               onClick={handleExportPayrollCsv}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow hover:scale-[1.02]"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-all flex items-center gap-1.5 shadow hover:scale-[1.02] cursor-pointer"
               title="Download da folha consolidada em arquivo CSV compatível com softwares contábeis"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
@@ -1511,36 +1720,203 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-muted-foreground mb-1 font-semibold">
-                      Dependentes (Salário Família / IRPF):
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      max="10"
-                      value={formDependents}
-                      onChange={(e) => setFormDependents(e.target.value)}
-                      placeholder="0"
-                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-emerald-500"
-                    />
                   </div>
                 </div>
 
-                <div className="pt-2 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="includeExtrasCheck"
-                    checked={formIncludeExtras}
-                    onChange={(e) => setFormIncludeExtras(e.target.checked)}
-                    className="rounded border-border text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <label htmlFor="includeExtrasCheck" className="text-muted-foreground">
-                    Calcular horas extras automaticamente com base nas marcações de ponto do mês (50% CLT)
-                  </label>
+                {/* SEÇÃO SALÁRIO FAMÍLIA & DEPENDENTES */}
+                <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-950/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-blue-400 text-xs flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-blue-400" />
+                      <span>Salário-Família & Deduções de Dependentes</span>
+                    </span>
+                    <span className="text-[10px] text-zinc-400">Previdência Social CLT</span>
+                  </div>
+
+                  {/* Toggle Habilitar Salário Família */}
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-lg bg-zinc-950/60 border border-zinc-800">
+                    <input
+                      type="checkbox"
+                      id="receiveFamAllowanceCheck"
+                      disabled={editingEmployee.role === 'dono'}
+                      checked={formReceiveSalarioFamilia}
+                      onChange={(e) => setFormReceiveSalarioFamilia(e.target.checked)}
+                      className="mt-0.5 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:opacity-50"
+                    />
+                    <div>
+                      <label htmlFor="receiveFamAllowanceCheck" className="text-xs font-bold text-foreground cursor-pointer block">
+                        Habilitar Salário-Família (Previdência Social / Lei 8.213/91)
+                      </label>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                        {editingEmployee.role === 'dono'
+                          ? 'Não aplicável para perfil de Dono/Pró-Labore.'
+                          : 'Apenas devido mediante entrega de certidão de nascimento, caderneta de vacinação e comprovante escolar para dependentes até 14 anos (ou inválido).'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Aviso de Teto Salarial Legal CLT */}
+                  {(() => {
+                    const currentGross = (parseFloat(formBaseSalary.replace(',', '.')) || 0) + (parseFloat(formBonusGratification.replace(',', '.')) || 0);
+                    const isAboveCeiling = currentGross > 1819.26;
+                    if (formReceiveSalarioFamilia && isAboveCeiling && editingEmployee.role !== 'dono') {
+                      return (
+                        <div className="p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 text-[11px] flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>Atenção ao Limite Legal:</strong> A remuneração deste colaborador (R$ {currentGross.toFixed(2)}) ultrapassa o teto legal da Previdência Social de <strong>R$ 1.819,26</strong>. Conforme o Art. 65 da Lei 8.213/91, o benefício de Salário Família <strong>não será pago</strong> (R$ 0,00).
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-muted-foreground mb-1 font-semibold text-[11px]">
+                        Cotas Salário-Família (Filhos até 14 anos):
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="10"
+                        disabled={!formReceiveSalarioFamilia || editingEmployee.role === 'dono'}
+                        value={formDependents}
+                        onChange={(e) => setFormDependents(e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground disabled:opacity-50 text-xs focus:ring-1 focus:ring-blue-500"
+                      />
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                        Valor legal: R$ 62,04 por cota
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-muted-foreground mb-1 font-semibold text-[11px]">
+                        Dependentes para Dedução IRPF:
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="10"
+                        value={formIrpfDependents}
+                        onChange={(e) => setFormIrpfDependents(e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-xs focus:ring-1 focus:ring-blue-500"
+                      />
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                        Dedução de R$ 189,59/mês por dependente no IRRF
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+
+                {/* SEÇÃO DESCONTO DE ATRASOS DO PONTO */}
+                {editingEmployee.role !== 'dono' && (
+                  <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-400 text-xs flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <span>Desconto Automático de Atrasos & Saídas Antecipadas (CLT Art. 58)</span>
+                      </span>
+                      <span className="text-[10px] text-amber-300 font-semibold">Integrado ao Ponto</span>
+                    </div>
+
+                    {/* Indicador de atrasos no mês */}
+                    {(() => {
+                      const userMonthPunches = punches.filter(
+                        (p) => p.employeeId === editingEmployee.id && p.date.startsWith(selectedMonth)
+                      );
+                      const totalLoggedDelayMin = userMonthPunches.reduce((acc, p) => acc + (p.delayMinutes || 0), 0);
+                      const delayHrs = Math.floor(totalLoggedDelayMin / 60);
+                      const delayRemMins = totalLoggedDelayMin % 60;
+                      const hourly = (parseFloat(formBaseSalary.replace(',', '.')) || 0) / 220;
+                      const calculatedDiscount = Math.round((totalLoggedDelayMin / 60) * hourly * 100) / 100;
+
+                      return (
+                        <div className="p-3 rounded-lg bg-zinc-950/80 border border-zinc-800 text-[11px] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-400">Total de Atrasos no Mês ({selectedMonth}):</span>
+                            <span className="font-bold font-mono text-amber-300">
+                              {totalLoggedDelayMin} minutos ({delayHrs}h {delayRemMins}m)
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-zinc-400">Desconto Proporcional Apurado:</span>
+                            <span className="font-bold font-mono text-rose-400">
+                              - R$ {calculatedDiscount.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="includeDelaysCheck"
+                          checked={formIncludeDelays}
+                          onChange={(e) => setFormIncludeDelays(e.target.checked)}
+                          className="rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        />
+                        <label htmlFor="includeDelaysCheck" className="text-xs font-semibold text-foreground cursor-pointer">
+                          Descontar atrasos e saídas antecipadas automaticamente na folha deste mês
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-muted-foreground mb-1 font-semibold text-[11px]">
+                          Regra de Aplicação do Desconto:
+                        </label>
+                        <select
+                          value={formDelaysPolicy}
+                          onChange={(e) => setFormDelaysPolicy(e.target.value as any)}
+                          disabled={!formIncludeDelays}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-xs focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
+                        >
+                          <option value="proporcional">Proporcional aos minutos exatos (Valor hora / 60)</option>
+                          <option value="com_dsr">Proporcional + Perda de 1 DSR semanal (Lei 605/49 Art. 6º)</option>
+                          <option value="isento">Isentar atrasos este mês (Abonar/Sem desconto)</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className="block text-muted-foreground mb-1 text-[10px]">
+                            Ajustar Minutos Manualmente (Opcional):
+                          </label>
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={formManualDelaysMin}
+                            onChange={(e) => setFormManualDelaysMin(e.target.value)}
+                            placeholder="Padrão do ponto"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-muted-foreground mb-1 text-[10px]">
+                            Fixar Desconto em R$ (Opcional):
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formManualDelaysR$}
+                            onChange={(e) => setFormManualDelaysR$(e.target.value)}
+                            placeholder="Padrão calculado"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
               {/* Percentuais de Desconto (VT, VR/VA, INSS, IRPF) */}
               <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-950/10 space-y-3">
@@ -1584,7 +1960,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
                       className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:ring-1 focus:ring-emerald-500"
                     />
                     <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                      Conforme política interna Crepelocks
+                      Conforme política interna de benefícios da empresa
                     </span>
                   </div>
 
@@ -1843,127 +2219,642 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
         </div>
       )}
 
-      {/* MODAL: Visualização Rápida de Holerite */}
-      {viewingHolerite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-card border border-border rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-border">
+      {/* MODAL: Visualização Rápida de Holerite (Contracheque Oficial CLT) */}
+      {viewingHolerite && (() => {
+        const emp = users.find((u) => u.id === viewingHolerite.employeeId);
+        const store = stores.find((s) => s.id === viewingHolerite.payrollStoreId) || stores.find((s) => s.id === emp?.storeId) || stores[0];
+
+        const headerTitle = viewingHolerite.holeriteHeaderTitle || store?.holeriteHeaderTitle || (viewingHolerite.role === 'dono' ? 'DEMONSTRATIVO DE PRÓ-LABORE' : 'RECIBO DE PAGAMENTO DE SALÁRIO');
+        const headerSubtitle = viewingHolerite.holeriteSubtitle || store?.holeriteSubtitle || 'Demonstrativo Mensal de Pagamento de Salário - CLT';
+        const storeRazaoSocial = viewingHolerite.storeRazaoSocial || store?.razaoSocial || store?.name || 'Unidade Operacional';
+        const storeCnpj = viewingHolerite.storeCnpj || store?.cnpj || 'Não informado';
+        const storeIE = viewingHolerite.storeStateRegistration || store?.stateRegistration || 'Isento';
+        const storeAddress = viewingHolerite.storeAddress || store?.address || 'Endereço da Unidade';
+        const storeNeighborhood = viewingHolerite.storeNeighborhood || store?.neighborhood || '';
+        const storeCity = viewingHolerite.storeCity || store?.city || '';
+        const storeCep = viewingHolerite.storeCep || store?.cep || '';
+        const storePhone = viewingHolerite.storePhone || store?.phone || '';
+        const storeEmail = viewingHolerite.storeEmail || store?.email || '';
+
+        // Rubricas dinâmicas do holerite
+        const rubrics: Array<{ cod: string; desc: string; ref: string; prov: number; descVal: number }> = [
+          {
+            cod: '001',
+            desc: viewingHolerite.role === 'dono' ? 'PRÓ-LABORE MENSAL' : 'SALÁRIO BASE MENSAL',
+            ref: '30 Dias',
+            prov: viewingHolerite.baseSalary,
+            descVal: 0
+          }
+        ];
+
+        if (viewingHolerite.bonusGratification > 0) {
+          rubrics.push({
+            cod: '015',
+            desc: 'GRATIFICAÇÃO DE FUNÇÃO / PRÊMIO',
+            ref: '100%',
+            prov: viewingHolerite.bonusGratification,
+            descVal: 0
+          });
+        }
+
+        if (viewingHolerite.extraHoursPay > 0) {
+          rubrics.push({
+            cod: '050',
+            desc: `HORAS EXTRAS 50% (${viewingHolerite.extraHoursCount}h apuradas)`,
+            ref: '50%',
+            prov: viewingHolerite.extraHoursPay,
+            descVal: 0
+          });
+        }
+
+        if (viewingHolerite.dsrExtraHoursPay > 0) {
+          rubrics.push({
+            cod: '055',
+            desc: 'DSR SOBRE HORAS EXTRAS (SÚMULA 172 TST)',
+            ref: '1/6',
+            prov: viewingHolerite.dsrExtraHoursPay,
+            descVal: 0
+          });
+        }
+
+        if (viewingHolerite.insalubridadePay > 0) {
+          rubrics.push({
+            cod: '032',
+            desc: 'ADICIONAL DE INSALUBRIDADE',
+            ref: '20%',
+            prov: viewingHolerite.insalubridadePay,
+            descVal: 0
+          });
+        }
+
+        if (viewingHolerite.familyAllowancePay > 0) {
+          rubrics.push({
+            cod: '045',
+            desc: `SALÁRIO FAMÍLIA PREVIDÊNCIA (${viewingHolerite.familyAllowanceCount} cota${viewingHolerite.familyAllowanceCount > 1 ? 's' : ''})`,
+            ref: `${viewingHolerite.familyAllowanceCount} Cotas`,
+            prov: viewingHolerite.familyAllowancePay,
+            descVal: 0
+          });
+        }
+
+        if (viewingHolerite.inssDiscount > 0) {
+          rubrics.push({
+            cod: '101',
+            desc: 'CONTRIBUIÇÃO PREVIDENCIÁRIA INSS',
+            ref: `${viewingHolerite.inssEffectivePct}%`,
+            prov: 0,
+            descVal: viewingHolerite.inssDiscount
+          });
+        }
+
+        if (viewingHolerite.irpfDiscount > 0) {
+          rubrics.push({
+            cod: '102',
+            desc: 'IMPOSTO DE RENDA RETIDO NA FONTE (IRRF)',
+            ref: `${viewingHolerite.irpfEffectivePct}%`,
+            prov: 0,
+            descVal: viewingHolerite.irpfDiscount
+          });
+        }
+
+        if (viewingHolerite.vtDiscount > 0) {
+          rubrics.push({
+            cod: '201',
+            desc: 'DESCONTO VALE TRANSPORTE (LEI 7.418/85)',
+            ref: `${viewingHolerite.vtEffectivePct}%`,
+            prov: 0,
+            descVal: viewingHolerite.vtDiscount
+          });
+        }
+
+        if (viewingHolerite.vrVaDiscount > 0) {
+          rubrics.push({
+            cod: '202',
+            desc: 'DESCONTO VALE REFEIÇÃO / PAT',
+            ref: `${viewingHolerite.vrVaEffectivePct}%`,
+            prov: 0,
+            descVal: viewingHolerite.vrVaDiscount
+          });
+        }
+
+        if (viewingHolerite.delaysDiscount > 0) {
+          const delayHrs = Math.floor(viewingHolerite.delaysMinutesCount / 60);
+          const delayMins = viewingHolerite.delaysMinutesCount % 60;
+          const refStr = delayHrs > 0 ? `${delayHrs}h ${delayMins}m` : `${viewingHolerite.delaysMinutesCount} min`;
+          rubrics.push({
+            cod: '301',
+            desc: `DESCONTO DE ATRASOS / SAÍDAS ANTECIPADAS (${refStr})`,
+            ref: refStr,
+            prov: 0,
+            descVal: viewingHolerite.delaysDiscount
+          });
+        }
+
+        if (viewingHolerite.dsrLossDiscount > 0) {
+          rubrics.push({
+            cod: '305',
+            desc: 'DESCONTO PERDA DE DSR (FALTA / ATRASO SEMANAL)',
+            ref: '1 DSR',
+            prov: 0,
+            descVal: viewingHolerite.dsrLossDiscount
+          });
+        }
+
+        if (viewingHolerite.otherDiscounts > 0) {
+          rubrics.push({
+            cod: '401',
+            desc: viewingHolerite.otherDiscountsDescription || 'OUTROS DESCONTOS EM FOLHA',
+            ref: 'Valor Fixo',
+            prov: 0,
+            descVal: viewingHolerite.otherDiscounts
+          });
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+            <div className="bg-card border border-border rounded-2xl max-w-3xl w-full max-h-[94vh] overflow-y-auto shadow-2xl p-5 sm:p-6 space-y-4 my-auto">
+              {/* Modal Top Actions */}
+              <div className="flex items-center justify-between pb-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-foreground">
+                      Contracheque Oficial • Competência {viewingHolerite.monthYear}
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Unidade de Lotação: <strong className="text-foreground">{viewingHolerite.storeName} ({viewingHolerite.storeCode || store?.code || 'LJ'})</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (store) openHeaderModalForStore(store.id);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 transition-all cursor-pointer"
+                    title="Editar informações do cabeçalho da loja deste colaborador"
+                  >
+                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="hidden sm:inline">Configurar Cabeçalho da Loja</span>
+                  </button>
+                  <button
+                    onClick={() => setViewingHolerite(null)}
+                    className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* CONTRATO DE TRABALHO & CABEÇALHO DO HOLERITE (Layout Fiel ao Documento Físico) */}
+              <div className="border border-border rounded-xl bg-card text-foreground overflow-hidden shadow-sm">
+                {/* 1. Faixa Superior do Empregador */}
+                <div className="bg-zinc-950 px-4 py-3 border-b border-zinc-800 text-white">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="font-black text-sm tracking-wide text-emerald-400 uppercase">
+                        {headerTitle}
+                      </h4>
+                      <p className="text-[10px] text-emerald-200/80">
+                        {headerSubtitle} • COMPETÊNCIA: <strong className="text-white">{viewingHolerite.monthYear}</strong>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const s = stores.find((st) => st.id === viewingHolerite.payrollStoreId) || stores.find((st) => st.id === emp?.storeId) || stores[0];
+                          if (s) openHeaderModalForStore(s);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-[10px] font-bold border border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Personalizar Razão Social, CNPJ, Título e Endereço que saem no cabeçalho desta unidade"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        <span>Configurar Cabeçalho desta Loja</span>
+                      </button>
+                      <div className="text-left sm:text-right text-[10px] text-zinc-400 font-mono">
+                        <span>CÓD. UNIDADE: <strong className="text-white">{viewingHolerite.storeCode || store?.code || 'LJ-01'}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Box de Dados da Empresa e do Colaborador */}
+                <div className="p-3.5 bg-muted/20 border-b border-border space-y-2 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-border/60">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground block font-bold uppercase">Razão Social / Empregador</span>
+                      <strong className="text-xs text-foreground block font-sans">{storeRazaoSocial}</strong>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                        {storeAddress}{storeNeighborhood ? ` - ${storeNeighborhood}` : ''}, {storeCity}{storeCep ? ` • CEP: ${storeCep}` : ''}
+                      </span>
+                    </div>
+                    <div className="sm:text-right">
+                      <span className="text-[10px] text-muted-foreground block font-bold uppercase">CNPJ & Inscrição Estadual</span>
+                      <strong className="text-xs font-mono text-foreground block">{storeCnpj} • I.E.: {storeIE}</strong>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                        Contato DP: {storePhone || storeEmail || 'dp@empresa.com.br'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground block">Colaborador(a):</span>
+                      <strong className="text-foreground block">{viewingHolerite.employeeName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground block">CPF:</span>
+                      <strong className="text-foreground font-mono block">{emp?.cpf || '000.000.000-00'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground block">Cargo / Função:</span>
+                      <strong className="text-foreground block">{viewingHolerite.positionTitle}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground block">Lotação / Pagamento:</span>
+                      <strong className="text-emerald-400 block">{viewingHolerite.storeName}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Tabela de Rubricas / Verbas */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/60 text-muted-foreground uppercase text-[10px] tracking-wider border-b border-border font-bold">
+                      <tr>
+                        <th className="px-3 py-2">Cód</th>
+                        <th className="px-3 py-2">Descrição da Rubrica</th>
+                        <th className="px-3 py-2 text-center">Ref / %</th>
+                        <th className="px-3 py-2 text-right">Proventos (R$)</th>
+                        <th className="px-3 py-2 text-right">Descontos (R$)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60 font-mono text-[11px]">
+                      {rubrics.map((r) => (
+                        <tr key={r.cod} className="hover:bg-muted/30">
+                          <td className="px-3 py-1.5 text-muted-foreground font-semibold">{r.cod}</td>
+                          <td className="px-3 py-1.5 font-sans text-foreground font-medium">{r.desc}</td>
+                          <td className="px-3 py-1.5 text-center text-muted-foreground">{r.ref}</td>
+                          <td className="px-3 py-1.5 text-right font-bold text-emerald-400">
+                            {r.prov > 0 ? r.prov.toFixed(2) : '-'}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-bold text-rose-400">
+                            {r.descVal > 0 ? r.descVal.toFixed(2) : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 4. Faixa de Totais e Salário Líquido */}
+                <div className="p-3 bg-muted/30 border-t border-border grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                  <div className="p-2.5 rounded-lg bg-card border border-border text-center sm:text-left">
+                    <span className="text-[10px] text-muted-foreground block font-bold uppercase">Total de Proventos</span>
+                    <strong className="text-sm font-mono text-emerald-400">
+                      R$ {viewingHolerite.totalGross.toFixed(2)}
+                    </strong>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-card border border-border text-center sm:text-left">
+                    <span className="text-[10px] text-muted-foreground block font-bold uppercase">Total de Descontos</span>
+                    <strong className="text-sm font-mono text-rose-400">
+                      - R$ {viewingHolerite.totalDiscounts.toFixed(2)}
+                    </strong>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-emerald-950/60 border border-emerald-500/50 text-center sm:text-left">
+                    <span className="text-[10px] text-emerald-300 block font-bold uppercase">Valor Líquido a Receber</span>
+                    <strong className="text-base font-mono font-black text-emerald-400">
+                      R$ {viewingHolerite.netSalary.toFixed(2)}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* 5. Bases Legais de Cálculo (CLT e Previdenciárias) */}
+                <div className="p-3 bg-card border-t border-border text-[10px] text-muted-foreground font-mono grid grid-cols-2 sm:grid-cols-6 gap-2">
+                  <div>
+                    <span className="block font-sans text-zinc-400">Salário Base:</span>
+                    <strong className="text-foreground">R$ {viewingHolerite.baseSalary.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span className="block font-sans text-zinc-400">Base INSS:</span>
+                    <strong className="text-foreground">R$ {viewingHolerite.inssBase.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span className="block font-sans text-zinc-400">Base FGTS:</span>
+                    <strong className="text-foreground">R$ {viewingHolerite.fgtsBase.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span className="block font-sans text-zinc-400">FGTS do Mês (8%):</span>
+                    <strong className="text-foreground font-bold">R$ {viewingHolerite.fgtsEmployer.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span className="block font-sans text-zinc-400">Base IRRF:</span>
+                    <strong className="text-foreground">R$ {viewingHolerite.irpfBase.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span className="block font-sans text-zinc-400">Faixa Efetiva IRRF:</span>
+                    <strong className="text-foreground font-bold">{viewingHolerite.irpfEffectivePct}%</strong>
+                  </div>
+                </div>
+
+                {/* 6. Mensagem de Rodapé da Loja */}
+                <div className="px-4 py-2 bg-muted/20 border-t border-border text-[10px] text-muted-foreground flex items-center justify-between">
+                  <span>
+                    Mensagem: <strong className="text-foreground">{viewingHolerite.holeriteFooterMessage || store?.holeriteFooterMessage || 'Crédito realizado em conta bancária/PIX.'}</strong>
+                  </span>
+                  <span className="font-mono text-[9px] text-muted-foreground">
+                    Autenticação: SHA256-{viewingHolerite.employeeId.slice(0, 6).toUpperCase()}
+                  </span>
+                </div>
+
+                {/* 7. Canhoto de Quitação */}
+                <div className="p-3 bg-muted/10 border-t border-dashed border-border/80 text-[10px] text-muted-foreground space-y-2">
+                  <p className="italic">
+                    "Declaro ter recebido da empresa empregadora identificada acima a importância líquida descrita neste recibo, correspondente à quitação integral da folha de pagamento da competência indicada."
+                  </p>
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                    <div className="text-center sm:text-left">
+                      <div className="w-48 border-b border-border mb-1" />
+                      <span>Data: ____/____/________</span>
+                    </div>
+                    <div className="text-center sm:text-right">
+                      <div className="w-56 border-b border-border mb-1" />
+                      <span className="font-bold text-foreground">{viewingHolerite.employeeName}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (store) openHeaderModalForStore(store.id);
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-border text-xs text-foreground hover:bg-muted font-semibold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Configurar Cabeçalho Desta Loja</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewingHolerite(null)}
+                    className="px-4 py-1.5 rounded-xl border border-border text-xs text-foreground hover:bg-muted font-semibold cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    onClick={() => handleGenerateHoleritePdf(viewingHolerite)}
+                    className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-950/40 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Baixar PDF Oficial</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================================= */}
+      {/* MODAL: CONFIGURAR CABEÇALHO DO CONTRACHEQUE POR UNIDADE */}
+      {/* ========================================================================= */}
+      {showStoreHeaderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-5 sm:p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Personalizar Cabeçalho do Contracheque
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">
+                    Defina a Razão Social, CNPJ, Título e Rodapé que aparecem no holerite dos colaboradores desta loja.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStoreHeaderModal(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStoreHeader} className="space-y-4 text-xs">
+              {/* Seletor de Loja */}
               <div>
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-emerald-400" />
-                  <span>Demonstrativo de Holerite ({viewingHolerite.monthYear})</span>
-                </h3>
-                <span className="text-xs text-muted-foreground">
-                  {viewingHolerite.employeeName} • {viewingHolerite.positionTitle}
-                </span>
+                <label className="block text-zinc-400 mb-1 font-semibold">Selecione a Loja a Configurar:</label>
+                <select
+                  value={selectedHeaderStoreId}
+                  onChange={(e) => openHeaderModalForStore(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-semibold"
+                >
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code}) - {s.razaoSocial || s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <button
-                onClick={() => setViewingHolerite(null)}
-                className="text-muted-foreground hover:text-foreground text-sm font-bold p-1 rounded-lg hover:bg-muted"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="mt-4 space-y-4 text-xs">
-              {/* Proventos */}
-              <div className="border border-border rounded-xl p-3 bg-muted/20">
-                <span className="font-bold text-emerald-400 text-xs block mb-2">Proventos (+)</span>
-                <div className="space-y-1.5 font-mono">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Salário Base / Pró-Labore:</span>
-                    <span className="font-semibold text-foreground">R$ {viewingHolerite.baseSalary.toFixed(2)}</span>
+              {/* Títulos do Documento */}
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                <span className="font-bold text-emerald-400 uppercase text-[10px] tracking-wider block">
+                  1. Título & Subtítulo do Holerite
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Título Principal *</label>
+                    <input
+                      type="text"
+                      required
+                      value={headerTitle}
+                      onChange={(e) => setHeaderTitle(e.target.value)}
+                      placeholder="Ex: RECIBO DE PAGAMENTO DE SALÁRIO"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-semibold"
+                    />
                   </div>
-                  {viewingHolerite.bonusGratification > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Gratificação de Salário:</span>
-                      <span className="font-semibold text-emerald-400">+ R$ {viewingHolerite.bonusGratification.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {viewingHolerite.extraHoursPay > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Horas Extras ({viewingHolerite.extraHoursCount}h):</span>
-                      <span className="font-semibold text-emerald-400">+ R$ {viewingHolerite.extraHoursPay.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {viewingHolerite.insalubridadePay > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Insalubridade:</span>
-                      <span className="font-semibold text-emerald-400">+ R$ {viewingHolerite.insalubridadePay.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="pt-2 border-t border-border flex justify-between font-bold text-foreground">
-                    <span>Total Bruto:</span>
-                    <span>R$ {viewingHolerite.totalGross.toFixed(2)}</span>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Subtítulo</label>
+                    <input
+                      type="text"
+                      value={headerSubtitle}
+                      onChange={(e) => setHeaderSubtitle(e.target.value)}
+                      placeholder="Ex: Demonstrativo Mensal de Pagamento de Salário - CLT"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* Descontos */}
-              <div className="border border-border rounded-xl p-3 bg-muted/20">
-                <span className="font-bold text-rose-400 text-xs block mb-2">Descontos (-)</span>
-                <div className="space-y-1.5 font-mono">
-                  {viewingHolerite.inssDiscount > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">INSS ({viewingHolerite.inssEffectivePct}%):</span>
-                      <span className="font-semibold text-rose-400">- R$ {viewingHolerite.inssDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {viewingHolerite.irpfDiscount > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">IRPF ({viewingHolerite.irpfEffectivePct}%):</span>
-                      <span className="font-semibold text-rose-400">- R$ {viewingHolerite.irpfDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {viewingHolerite.vtDiscount > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Vale Transporte ({viewingHolerite.vtEffectivePct}%):</span>
-                      <span className="font-semibold text-rose-400">- R$ {viewingHolerite.vtDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {viewingHolerite.vrVaDiscount > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Vale Refeição/PAT ({viewingHolerite.vrVaEffectivePct}%):</span>
-                      <span className="font-semibold text-rose-400">- R$ {viewingHolerite.vrVaDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {viewingHolerite.otherDiscounts > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Outros Descontos:</span>
-                      <span className="font-semibold text-rose-400">- R$ {viewingHolerite.otherDiscounts.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="pt-2 border-t border-border flex justify-between font-bold text-rose-400">
-                    <span>Total de Descontos:</span>
-                    <span>- R$ {viewingHolerite.totalDiscounts.toFixed(2)}</span>
+              {/* Dados Fiscais da Empresa */}
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                <span className="font-bold text-zinc-300 uppercase text-[10px] tracking-wider block">
+                  2. Dados do Empregador (Razão Social & CNPJ)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Razão Social Oficial *</label>
+                    <input
+                      type="text"
+                      required
+                      value={headerRazaoSocial}
+                      onChange={(e) => setHeaderRazaoSocial(e.target.value)}
+                      placeholder="Ex: MINHA EMPRESA ALIMENTAÇÃO LTDA"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Nome Fantasia da Loja</label>
+                    <input
+                      type="text"
+                      value={headerName}
+                      onChange={(e) => setHeaderName(e.target.value)}
+                      placeholder="Ex: Unidade Centro"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">CNPJ *</label>
+                    <input
+                      type="text"
+                      value={headerCnpj}
+                      onChange={(e) => setHeaderCnpj(e.target.value)}
+                      placeholder="00.000.000/0000-00"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Inscrição Estadual</label>
+                    <input
+                      type="text"
+                      value={headerStateRegistration}
+                      onChange={(e) => setHeaderStateRegistration(e.target.value)}
+                      placeholder="Isento ou número da IE"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* Salário Líquido */}
-              <div className="p-3.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-between">
-                <span className="font-bold text-emerald-300 text-xs">VALOR LÍQUIDO A RECEBER:</span>
-                <span className="text-lg font-black text-emerald-400 font-mono">
-                  R$ {viewingHolerite.netSalary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {/* Endereço & Contato */}
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                <span className="font-bold text-zinc-300 uppercase text-[10px] tracking-wider block">
+                  3. Endereço & Contato da Unidade
                 </span>
-              </div>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-zinc-400 mb-1 font-medium">Endereço Completo</label>
+                    <input
+                      type="text"
+                      value={headerAddress}
+                      onChange={(e) => setHeaderAddress(e.target.value)}
+                      placeholder="Av. Principal, 100"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Bairro</label>
+                    <input
+                      type="text"
+                      value={headerNeighborhood}
+                      onChange={(e) => setHeaderNeighborhood(e.target.value)}
+                      placeholder="Centro"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                </div>
 
-            <div className="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-border">
-              <button
-                onClick={() => setViewingHolerite(null)}
-                className="px-4 py-1.5 rounded-xl border border-border text-xs text-foreground hover:bg-muted font-semibold"
-              >
-                Fechar
-              </button>
-              <button
-                onClick={() => handleGenerateHoleritePdf(viewingHolerite)}
-                className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Baixar PDF</span>
-              </button>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Cidade / UF</label>
+                    <input
+                      type="text"
+                      value={headerCity}
+                      onChange={(e) => setHeaderCity(e.target.value)}
+                      placeholder="Rio de Janeiro - RJ"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Telefone DP</label>
+                    <input
+                      type="text"
+                      value={headerPhone}
+                      onChange={(e) => setHeaderPhone(e.target.value)}
+                      placeholder="(21) 2555-8900"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">E-mail DP</label>
+                    <input
+                      type="email"
+                      value={headerEmail}
+                      onChange={(e) => setHeaderEmail(e.target.value)}
+                      placeholder="dp@empresa.com.br"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Mensagem de Rodapé */}
+              <div>
+                <label className="block text-zinc-400 mb-1 font-semibold">Mensagem de Rodapé do Contracheque:</label>
+                <input
+                  type="text"
+                  value={headerFooterMessage}
+                  onChange={(e) => setHeaderFooterMessage(e.target.value)}
+                  placeholder="Ex: Crédito realizado em conta corrente via PIX. Em caso de dúvidas, contate o DP."
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
+                />
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="p-3 rounded-xl bg-zinc-950 border border-dashed border-emerald-500/40 space-y-1">
+                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
+                  Pré-visualização do Cabeçalho Oficial:
+                </span>
+                <div className="text-white font-bold text-xs">{headerTitle.toUpperCase()}</div>
+                <div className="text-[11px] text-zinc-400">{headerSubtitle}</div>
+                <div className="text-[10px] text-zinc-300 font-sans mt-1">
+                  <strong>{headerRazaoSocial || 'RAZÃO SOCIAL LTDA'}</strong> • CNPJ: {headerCnpj || '00.000.000/0001-00'}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowStoreHeaderModal(false)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer shadow-md shadow-emerald-950/40"
+                >
+                  Salvar Configuração do Cabeçalho
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

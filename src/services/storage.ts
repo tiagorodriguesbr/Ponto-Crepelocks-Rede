@@ -20,7 +20,12 @@ import {
   ScheduleType,
   PunchType,
   PayrollEmployeeConfig,
-  DismissedEmployee
+  DismissedEmployee,
+  VacationRecord,
+  ThirteenthSalaryRecord,
+  MedicalExamRecord,
+  DisciplinaryNoticeRecord,
+  EmployeeBenefitCard
 } from '../types';
 import {
   INITIAL_STORES,
@@ -43,6 +48,11 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'crepelocks_notifications_v2',
   PAYROLL_CONFIGS: 'crepelocks_payroll_configs_v2',
   DISMISSED_EMPLOYEES: 'crepelocks_dismissed_employees_v2',
+  VACATIONS: 'crepelocks_vacations_v2',
+  THIRTEENTH_SALARIES: 'crepelocks_thirteenth_v2',
+  MEDICAL_EXAMS: 'crepelocks_medical_exams_v2',
+  DISCIPLINARY_NOTICES: 'crepelocks_disciplinary_v2',
+  BENEFIT_CARDS: 'crepelocks_benefit_cards_v2',
   THEME: 'crepelocks_theme_v2',
   CURRENT_USER: 'crepelocks_current_user_v2',
   CLOUD_INITIALIZED: 'crepelocks_cloud_init_v2',
@@ -139,7 +149,37 @@ export const StorageService = {
 
   // Stores
   getStores(): Store[] {
-    return getFromStorage<Store[]>(STORAGE_KEYS.STORES, INITIAL_STORES);
+    const list = getFromStorage<Store[]>(STORAGE_KEYS.STORES, INITIAL_STORES);
+    let modified = false;
+    INITIAL_STORES.forEach((initS) => {
+      const existing = list.find((s) => s.id === initS.id);
+      if (existing) {
+        if (!existing.razaoSocial && initS.razaoSocial) {
+          existing.razaoSocial = initS.razaoSocial;
+          modified = true;
+        }
+        if (!existing.stateRegistration && initS.stateRegistration) {
+          existing.stateRegistration = initS.stateRegistration;
+          modified = true;
+        }
+        if (!existing.neighborhood && initS.neighborhood) {
+          existing.neighborhood = initS.neighborhood;
+          modified = true;
+        }
+        if (!existing.cep && initS.cep) {
+          existing.cep = initS.cep;
+          modified = true;
+        }
+        if (!existing.holeriteFooterMessage && initS.holeriteFooterMessage) {
+          existing.holeriteFooterMessage = initS.holeriteFooterMessage;
+          modified = true;
+        }
+      }
+    });
+    if (modified) {
+      saveToStorage(STORAGE_KEYS.STORES, list);
+    }
+    return list;
   },
   saveStores(stores: Store[]): void {
     saveToStorage(STORAGE_KEYS.STORES, stores);
@@ -919,10 +959,20 @@ export const StorageService = {
         modified = true;
       }
     });
-    // Ensure user-admin has payrollStoreId = store-botafogo
+    // Ensure user-admin has payrollStoreId = store-botafogo and no accidental Salário Família
     list.forEach((c) => {
-      if (c.employeeId === 'user-admin' && (!c.payrollStoreId || c.payrollStoreId !== 'store-botafogo')) {
-        c.payrollStoreId = 'store-botafogo';
+      if (c.employeeId === 'user-admin') {
+        if (!c.payrollStoreId || c.payrollStoreId !== 'store-botafogo') {
+          c.payrollStoreId = 'store-botafogo';
+          modified = true;
+        }
+        if (c.receiveSalarioFamilia || (c.familyAllowanceDependents && c.familyAllowanceDependents > 0)) {
+          c.familyAllowanceDependents = 0;
+          c.receiveSalarioFamilia = false;
+          modified = true;
+        }
+      } else if (!c.receiveSalarioFamilia && c.familyAllowanceDependents) {
+        c.familyAllowanceDependents = 0;
         modified = true;
       }
     });
@@ -952,6 +1002,136 @@ export const StorageService = {
     safeFirestoreSetDoc(doc(db, 'payrollConfigs', config.employeeId), config).catch((err) =>
       handleFirestoreError(err, OperationType.WRITE, `payrollConfigs/${config.employeeId}`)
     );
+  },
+
+  // ==========================================
+  // GESTÃO DE FÉRIAS (CLT Art. 129 - 153)
+  // ==========================================
+  getVacations(): VacationRecord[] {
+    return getFromStorage<VacationRecord[]>(STORAGE_KEYS.VACATIONS, []);
+  },
+  saveVacations(list: VacationRecord[]): void {
+    saveToStorage(STORAGE_KEYS.VACATIONS, list);
+  },
+  addVacation(vac: VacationRecord): void {
+    const list = this.getVacations();
+    list.unshift(vac);
+    this.saveVacations(list);
+    safeFirestoreSetDoc(doc(db, 'vacations', vac.id), vac).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `vacations/${vac.id}`)
+    );
+  },
+  updateVacation(vac: VacationRecord): void {
+    const list = this.getVacations();
+    const idx = list.findIndex((v) => v.id === vac.id);
+    if (idx >= 0) list[idx] = vac;
+    else list.unshift(vac);
+    this.saveVacations(list);
+    safeFirestoreSetDoc(doc(db, 'vacations', vac.id), vac).catch((err) =>
+      handleFirestoreError(err, OperationType.WRITE, `vacations/${vac.id}`)
+    );
+  },
+  deleteVacation(id: string): void {
+    const list = this.getVacations().filter((v) => v.id !== id);
+    this.saveVacations(list);
+    deleteDoc(doc(db, 'vacations', id)).catch(() => {});
+  },
+
+  // ==========================================
+  // GESTÃO DE 13º SALÁRIO (Gratificação Natalina)
+  // ==========================================
+  getThirteenthSalaries(): ThirteenthSalaryRecord[] {
+    return getFromStorage<ThirteenthSalaryRecord[]>(STORAGE_KEYS.THIRTEENTH_SALARIES, []);
+  },
+  saveThirteenthSalaries(list: ThirteenthSalaryRecord[]): void {
+    saveToStorage(STORAGE_KEYS.THIRTEENTH_SALARIES, list);
+  },
+  updateThirteenthSalary(record: ThirteenthSalaryRecord): void {
+    const list = this.getThirteenthSalaries();
+    const idx = list.findIndex((r) => r.id === record.id || (r.employeeId === record.employeeId && r.year === record.year));
+    if (idx >= 0) list[idx] = record;
+    else list.unshift(record);
+    this.saveThirteenthSalaries(list);
+    safeFirestoreSetDoc(doc(db, 'thirteenthSalaries', record.id), record).catch(() => {});
+  },
+
+  // ==========================================
+  // MEDICINA DO TRABALHO & ASO (PCMSO / NR-7)
+  // ==========================================
+  getMedicalExams(): MedicalExamRecord[] {
+    return getFromStorage<MedicalExamRecord[]>(STORAGE_KEYS.MEDICAL_EXAMS, []);
+  },
+  saveMedicalExams(list: MedicalExamRecord[]): void {
+    saveToStorage(STORAGE_KEYS.MEDICAL_EXAMS, list);
+  },
+  addMedicalExam(exam: MedicalExamRecord): void {
+    const list = this.getMedicalExams();
+    list.unshift(exam);
+    this.saveMedicalExams(list);
+    safeFirestoreSetDoc(doc(db, 'medicalExams', exam.id), exam).catch(() => {});
+  },
+  updateMedicalExam(exam: MedicalExamRecord): void {
+    const list = this.getMedicalExams();
+    const idx = list.findIndex((e) => e.id === exam.id);
+    if (idx >= 0) list[idx] = exam;
+    else list.unshift(exam);
+    this.saveMedicalExams(list);
+    safeFirestoreSetDoc(doc(db, 'medicalExams', exam.id), exam).catch(() => {});
+  },
+  deleteMedicalExam(id: string): void {
+    const list = this.getMedicalExams().filter((e) => e.id !== id);
+    this.saveMedicalExams(list);
+    deleteDoc(doc(db, 'medicalExams', id)).catch(() => {});
+  },
+
+  // ==========================================
+  // GESTÃO DISCIPLINAR & CONDUTA (CLT Art. 482)
+  // ==========================================
+  getDisciplinaryNotices(): DisciplinaryNoticeRecord[] {
+    return getFromStorage<DisciplinaryNoticeRecord[]>(STORAGE_KEYS.DISCIPLINARY_NOTICES, []);
+  },
+  saveDisciplinaryNotices(list: DisciplinaryNoticeRecord[]): void {
+    saveToStorage(STORAGE_KEYS.DISCIPLINARY_NOTICES, list);
+  },
+  addDisciplinaryNotice(notice: DisciplinaryNoticeRecord): void {
+    const list = this.getDisciplinaryNotices();
+    list.unshift(notice);
+    this.saveDisciplinaryNotices(list);
+    safeFirestoreSetDoc(doc(db, 'disciplinaryNotices', notice.id), notice).catch(() => {});
+  },
+  deleteDisciplinaryNotice(id: string): void {
+    const list = this.getDisciplinaryNotices().filter((n) => n.id !== id);
+    this.saveDisciplinaryNotices(list);
+    deleteDoc(doc(db, 'disciplinaryNotices', id)).catch(() => {});
+  },
+
+  // ==========================================
+  // BENEFÍCIOS & ENCARGOS (VT, VR/VA, PLANOS)
+  // ==========================================
+  getBenefitCards(): EmployeeBenefitCard[] {
+    return getFromStorage<EmployeeBenefitCard[]>(STORAGE_KEYS.BENEFIT_CARDS, []);
+  },
+  saveBenefitCards(list: EmployeeBenefitCard[]): void {
+    saveToStorage(STORAGE_KEYS.BENEFIT_CARDS, list);
+  },
+  addBenefitCard(card: EmployeeBenefitCard): void {
+    const list = this.getBenefitCards();
+    list.unshift(card);
+    this.saveBenefitCards(list);
+    safeFirestoreSetDoc(doc(db, 'benefitCards', card.id), card).catch(() => {});
+  },
+  updateBenefitCard(card: EmployeeBenefitCard): void {
+    const list = this.getBenefitCards();
+    const idx = list.findIndex((b) => b.id === card.id);
+    if (idx >= 0) list[idx] = card;
+    else list.unshift(card);
+    this.saveBenefitCards(list);
+    safeFirestoreSetDoc(doc(db, 'benefitCards', card.id), card).catch(() => {});
+  },
+  deleteBenefitCard(id: string): void {
+    const list = this.getBenefitCards().filter((b) => b.id !== id);
+    this.saveBenefitCards(list);
+    deleteDoc(doc(db, 'benefitCards', id)).catch(() => {});
   },
 
   // Real-time Cloud Synchronization
@@ -1107,6 +1287,12 @@ export const StorageService = {
     localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
     localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
     localStorage.removeItem(STORAGE_KEYS.PAYROLL_CONFIGS);
+    localStorage.removeItem(STORAGE_KEYS.DISMISSED_EMPLOYEES);
+    localStorage.removeItem(STORAGE_KEYS.VACATIONS);
+    localStorage.removeItem(STORAGE_KEYS.THIRTEENTH_SALARIES);
+    localStorage.removeItem(STORAGE_KEYS.MEDICAL_EXAMS);
+    localStorage.removeItem(STORAGE_KEYS.DISCIPLINARY_NOTICES);
+    localStorage.removeItem(STORAGE_KEYS.BENEFIT_CARDS);
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     localStorage.removeItem(STORAGE_KEYS.CLOUD_INITIALIZED);
   }

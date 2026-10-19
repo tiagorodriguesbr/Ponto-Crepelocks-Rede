@@ -19,6 +19,7 @@ import { StoresManager } from './components/StoresManager';
 import { EmployeesAndUsersManager } from './components/EmployeesAndUsersManager';
 import { ReportsAndPayroll } from './components/ReportsAndPayroll';
 import { PayrollManager } from './components/PayrollManager';
+import { CompleteHRSuite } from './components/CompleteHRSuite';
 import { EmployeePunchScreen } from './components/EmployeePunchScreen';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { LoginModal } from './components/LoginModal';
@@ -230,6 +231,15 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'rh_completo' && (
+              <CompleteHRSuite
+                users={users}
+                stores={stores}
+                currentUser={currentUser}
+                onDataUpdated={reloadData}
+              />
+            )}
+
             {activeTab === 'lojas' && (
               <StoresManager
                 stores={stores}
@@ -266,7 +276,9 @@ export default function App() {
       <footer className="border-t border-border/60 py-6 mt-12 bg-background/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-foreground">Crepelocks Brasil</span>
+            <span className="font-bold text-foreground">
+              {stores[0]?.razaoSocial || stores[0]?.name || 'Sistema Integrado RH & Ponto'}
+            </span>
             <span>•</span>
             <span className="flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />

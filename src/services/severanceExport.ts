@@ -31,6 +31,8 @@ export const SeveranceExportService = {
     const storeCnpj = resolvedStore?.cnpj || '45.892.120/0001-83';
     const storeCode = resolvedStore?.code || 'UNID';
 
+    const storeRazaoSocial = resolvedStore?.razaoSocial || resolvedStore?.name || storeDisplayName;
+
     // 1. Cabeçalho Institucional
     doc.setFillColor(15, 23, 42); // Slate-900
     doc.rect(14, 10, 182, 22, 'F');
@@ -38,7 +40,7 @@ export const SeveranceExportService = {
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text(`CREPELOCKS - ${storeDisplayName.toUpperCase()}`, 18, 18);
+    doc.text(`${storeDisplayName.toUpperCase()}`, 18, 18);
 
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
@@ -58,7 +60,7 @@ export const SeveranceExportService = {
     doc.setFont('helvetica', 'normal');
     doc.text(`Estabelecimento / Loja: ${storeDisplayName} (${storeCode})`, 18, 47);
     doc.text(`CNPJ: ${storeCnpj}`, 120, 47);
-    doc.text(`Razão Social: CREPELOCKS ALIMENTAÇÃO LTDA`, 18, 53);
+    doc.text(`Razão Social: ${storeRazaoSocial}`, 18, 53);
     doc.text(`Endereço: ${storeAddress} - ${storeCityState}`, 120, 53);
 
     doc.setFont('helvetica', 'bold');
