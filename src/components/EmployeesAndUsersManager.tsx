@@ -30,7 +30,7 @@ import {
   Calculator
 } from 'lucide-react';
 import { UserAccount, Store, Role, ScheduleType, UserPermissions, DismissedEmployee, SeveranceReason, EmployeeDependent, PayrollEmployeeConfig } from '../types';
-import { StorageService } from '../services/storage';
+import { StorageService, calculateScheduledLunchStart } from '../services/storage';
 import { PayrollCalculatorService } from '../services/payrollCalculator';
 import { SeveranceExportService } from '../services/severanceExport';
 
@@ -144,6 +144,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const [addScheduleType, setAddScheduleType] = useState<ScheduleType>('6x1');
   const [addDefaultShiftStart, setAddDefaultShiftStart] = useState<string>('08:00');
   const [addDefaultShiftEnd, setAddDefaultShiftEnd] = useState<string>('16:20');
+  const [addDefaultLunchStart, setAddDefaultLunchStart] = useState<string>('12:00');
   const [addLunchDurationMin, setAddLunchDurationMin] = useState<number>(60);
   const [addMfaEnabled, setAddMfaEnabled] = useState<boolean>(false);
   const [addPermissions, setAddPermissions] = useState<UserPermissions>({
@@ -158,6 +159,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
 
   // Salário Base, Benefício Salário Família, Dependentes & Dados Bancários no Cadastro
   const [addBaseSalary, setAddBaseSalary] = useState<string>('1600.00');
+  const [addBonusGratification, setAddBonusGratification] = useState<string>('0');
   const [addReceiveSalarioFamilia, setAddReceiveSalarioFamilia] = useState<boolean>(false);
   const [addDependentsList, setAddDependentsList] = useState<EmployeeDependent[]>([]);
   const [addBankName, setAddBankName] = useState<string>('Itaú Unibanco');
@@ -185,6 +187,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
 
   // Salário Base, Salário Família, Dependentes & Dados Bancários na Edição
   const [editBaseSalary, setEditBaseSalary] = useState<string>('1600.00');
+  const [editBonusGratification, setEditBonusGratification] = useState<string>('0');
   const [editReceiveSalarioFamilia, setEditReceiveSalarioFamilia] = useState<boolean>(false);
   const [editDependentsList, setEditDependentsList] = useState<EmployeeDependent[]>([]);
   const [editBankName, setEditBankName] = useState<string>('Itaú Unibanco');
@@ -255,6 +258,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const [editScheduleType, setEditScheduleType] = useState<ScheduleType>('6x1');
   const [editDefaultShiftStart, setEditDefaultShiftStart] = useState<string>('08:00');
   const [editDefaultShiftEnd, setEditDefaultShiftEnd] = useState<string>('16:20');
+  const [editDefaultLunchStart, setEditDefaultLunchStart] = useState<string>('12:00');
   const [editLunchDurationMin, setEditLunchDurationMin] = useState<number>(60);
   const [editMfaEnabled, setEditMfaEnabled] = useState<boolean>(false);
   const [editPermissions, setEditPermissions] = useState<UserPermissions>({
@@ -293,6 +297,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setAddScheduleType('6x1');
     setAddDefaultShiftStart('08:00');
     setAddDefaultShiftEnd('16:20');
+    setAddDefaultLunchStart('12:00');
     setAddLunchDurationMin(60);
     setAddMfaEnabled(false);
     setAddPermissions({
@@ -305,6 +310,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       canEditStores: false
     });
     setAddBaseSalary('1600.00');
+    setAddBonusGratification('0');
     setAddReceiveSalarioFamilia(false);
     setAddDependentsList([]);
     setAddBankName('Itaú Unibanco');
@@ -322,6 +328,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       setAddExemptFromPunch(true); // Dono nunca bate ponto
       setAddAccompanimentMode(false);
       setAddBaseSalary('12500.00');
+      setAddBonusGratification('2500.00');
       setAddReceiveSalarioFamilia(false); // Dono não recebe salário família
       setAddPermissions({
         canEditSchedules: true,
@@ -338,6 +345,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       setAddExemptFromPunch(true); // Padrão: Cargo de Confiança (Dono pode alterar para bater ponto)
       setAddAccompanimentMode(true); // Padrão: Acompanhamento sem poder modificar
       setAddBaseSalary('2800.00');
+      setAddBonusGratification('0');
       setAddPermissions({
         canEditSchedules: false,
         canApproveOccurrences: false,
@@ -353,6 +361,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       setAddExemptFromPunch(false); // Atendente bate ponto obrigatório
       setAddAccompanimentMode(false);
       setAddBaseSalary('1600.00');
+      setAddBonusGratification('0');
       setAddPermissions({
         canEditSchedules: false,
         canApproveOccurrences: false,
@@ -400,6 +409,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setEditScheduleType(user.scheduleType || '6x1');
     setEditDefaultShiftStart(user.defaultShiftStart || '08:00');
     setEditDefaultShiftEnd(user.defaultShiftEnd || '16:20');
+    setEditDefaultLunchStart(user.defaultLunchStart || calculateScheduledLunchStart(user.defaultShiftStart || '08:00', user.defaultShiftEnd || '16:20'));
     setEditLunchDurationMin(user.lunchDurationMin || 60);
     setEditMfaEnabled(Boolean(user.mfaEnabled));
     setEditAdmissionDate(user.admissionDate || new Date().toISOString().split('T')[0]);
@@ -408,9 +418,10 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     setEditProbationExtended(Boolean(user.probationExtended));
     setEditProbationDaysExtension(user.probationDaysExtension || 45);
 
-    // Carregar salário, dependentes e banco
+    // Carregar salário, gratificação, dependentes e banco
     const cfg = StorageService.getPayrollConfigs().find((c) => c.employeeId === user.id);
     setEditBaseSalary(cfg?.baseSalary !== undefined ? String(cfg.baseSalary) : (user.role === 'dono' ? '12500' : '1600'));
+    setEditBonusGratification(cfg?.bonusGratification !== undefined ? String(cfg.bonusGratification) : '0');
     setEditReceiveSalarioFamilia(user.role === 'dono' ? false : Boolean(user.receiveSalarioFamilia ?? cfg?.receiveSalarioFamilia ?? false));
     setEditDependentsList(user.dependentsList || []);
     setEditBankName(user.bankData?.bankName || 'Itaú Unibanco');
@@ -477,6 +488,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       : 0;
     const irpfDepsCount = addDependentsList.filter((d) => d.eligibleIrpfDeduction).length;
     const parsedSalary = parseFloat(addBaseSalary.replace(',', '.')) || (isDono ? 12500 : 1600);
+    const parsedBonus = parseFloat(addBonusGratification.replace(',', '.')) || (isDono ? 2500 : 0);
 
     const newUser: UserAccount = {
       id: `user-${Date.now()}`,
@@ -495,6 +507,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       scheduleType: addScheduleType,
       defaultShiftStart: addDefaultShiftStart,
       defaultShiftEnd: addDefaultShiftEnd,
+      defaultLunchStart: addDefaultLunchStart || calculateScheduledLunchStart(addDefaultShiftStart, addDefaultShiftEnd),
       lunchDurationMin: addLunchDurationMin,
       active: true,
       mfaEnabled: addMfaEnabled,
@@ -527,13 +540,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       payrollStoreId: newUser.payrollStoreId || newUser.storeId,
       monthYear: new Date().toISOString().slice(0, 7),
       baseSalary: parsedSalary,
-      bonusGratification: 0,
+      bonusGratification: parsedBonus,
       insalubridadePct: 0,
       receiveSalarioFamilia: famAllowanceOptIn,
       familyAllowanceDependents: eligibleDepsCount,
       irpfDependentsCount: irpfDepsCount,
       vtDiscountPct: isDono ? 0 : 6,
-      vrVaDiscountPct: isDono ? 0 : 5,
+      vrVaDiscountPct: 0, // Inicia zerado, configurável no módulo de benefícios
+      otherDiscountsAmount: 0,
+      otherDiscountsDescription: '',
       includePunchesExtras: !isDono,
       includeDelaysDiscount: !isDono,
       delaysDeductionPolicy: isDono ? 'isento' : 'proporcional',
@@ -550,7 +565,10 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
         today.getFullYear(),
         today.getMonth() + 1,
         addDefaultShiftStart,
-        addDefaultShiftEnd
+        addDefaultShiftEnd,
+        undefined,
+        undefined,
+        addDefaultLunchStart || calculateScheduledLunchStart(addDefaultShiftStart, addDefaultShiftEnd)
       );
     }
 
@@ -596,6 +614,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       : 0;
     const irpfDepsCount = editDependentsList.filter((d) => d.eligibleIrpfDeduction).length;
     const parsedSalary = parseFloat(editBaseSalary.replace(',', '.')) || (isDono ? 12500 : 1600);
+    const parsedBonus = parseFloat(editBonusGratification.replace(',', '.')) || (isDono ? 2500 : 0);
 
     const updated: UserAccount = {
       ...editingUser,
@@ -615,6 +634,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
       scheduleType: editScheduleType,
       defaultShiftStart: editDefaultShiftStart,
       defaultShiftEnd: editDefaultShiftEnd,
+      defaultLunchStart: editDefaultLunchStart || calculateScheduledLunchStart(editDefaultShiftStart, editDefaultShiftEnd),
       lunchDurationMin: editLunchDurationMin,
       mfaEnabled: editMfaEnabled,
       permissions: finalPermissions,
@@ -651,11 +671,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
     const updatedCfg: PayrollEmployeeConfig = {
       ...(existingCfg || {
         employeeId: updated.id,
-        monthYear: new Date().toISOString().slice(0, 7)
+        monthYear: new Date().toISOString().slice(0, 7),
+        vtDiscountPct: updated.role === 'dono' ? 0 : 6,
+        vrVaDiscountPct: 0,
+        otherDiscountsAmount: 0
       }),
       employeeId: updated.id,
       payrollStoreId: updated.payrollStoreId || updated.storeId,
       baseSalary: parsedSalary,
+      bonusGratification: parsedBonus,
       receiveSalarioFamilia: famAllowanceOptIn,
       familyAllowanceDependents: eligibleDepsCount,
       irpfDependentsCount: irpfDepsCount,
@@ -680,12 +704,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
   const handleConfirmDismissal = () => {
     if (!dismissingEmployee) return;
 
-    const baseSalary = StorageService.getPayrollConfigs().find((c) => c.employeeId === dismissingEmployee.id)?.baseSalary || 2000;
+    const empCfg = StorageService.getPayrollConfigs().find((c) => c.employeeId === dismissingEmployee.id);
+    const baseSalary = empCfg?.baseSalary || 2000;
+    const bonusGratification = empCfg?.bonusGratification || 0;
     const storeObj = stores.find((s) => s.id === (dismissingEmployee.payrollStoreId || dismissingEmployee.storeId)) || stores[0];
 
     const calculation = PayrollCalculatorService.calculateSeverance({
       employee: dismissingEmployee,
       baseSalary,
+      bonusGratification,
       admissionDate: dismissingEmployee.admissionDate || '2026-08-01',
       dismissalDate,
       reason: dismissalReason,
@@ -2020,7 +2047,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                 <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block">
                   6. Escala & Horário Padrão
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-zinc-400 mb-1">Tipo de Escala</label>
                     <select
@@ -2039,7 +2066,24 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     <input
                       type="time"
                       value={addDefaultShiftStart}
-                      onChange={(e) => setAddDefaultShiftStart(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAddDefaultShiftStart(val);
+                        setAddDefaultLunchStart(calculateScheduledLunchStart(val, addDefaultShiftEnd));
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1">
+                      Início Almoço Previsto
+                      <span className="text-[10px] text-amber-400 ml-1">(Trava 5 min)</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={addDefaultLunchStart}
+                      onChange={(e) => setAddDefaultLunchStart(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
                     />
                   </div>
@@ -2054,6 +2098,9 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     />
                   </div>
                 </div>
+                <p className="text-[10px] text-zinc-400 mt-2">
+                  🔒 <strong>Regras do Ponto:</strong> A entrada só é liberada a partir de 5 minutos antes da Entrada. A saída para almoço só é liberada 5 minutos antes do Início Previsto do Almoço.
+                </p>
               </div>
 
               {/* SEÇÃO 7: REMUNERAÇÃO, LOTAÇÃO E BENEFÍCIO SALÁRIO FAMÍLIA (CLT) */}
@@ -2063,7 +2110,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                   <span className="text-[10px] text-emerald-400 font-semibold">Regras CLT / INSS</span>
                 </span>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-zinc-400 mb-1 font-medium">Salário Base Mensal (R$) *</label>
                     <input
@@ -2077,7 +2124,22 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                   </div>
 
                   <div>
-                    <label className="block text-zinc-400 mb-1 font-medium">Loja Pagadora do Contracheque</label>
+                    <label className="block text-zinc-400 mb-1 font-medium">
+                      Gratificação Mensal (R$)
+                      <span className="text-[10px] text-emerald-400 ml-1 font-normal">(CLT 457 §1º)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={addBonusGratification}
+                      onChange={(e) => setAddBonusGratification(e.target.value)}
+                      placeholder="Ex: 500.00"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-zinc-500 mt-0.5 block">Integra férias e 13º</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Loja Pagadora</label>
                     <select
                       value={addPayrollStoreId}
                       onChange={(e) => setAddPayrollStoreId(e.target.value)}
@@ -2085,7 +2147,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     >
                       {stores.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} ({s.code}) - {s.razaoSocial || s.name}
+                          {s.name} ({s.code})
                         </option>
                       ))}
                     </select>
@@ -3026,7 +3088,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                 <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block">
                   6. Escala & Horário de Trabalho
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-zinc-400 mb-1">Escala</label>
                     <select
@@ -3044,7 +3106,23 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     <input
                       type="time"
                       value={editDefaultShiftStart}
-                      onChange={(e) => setEditDefaultShiftStart(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditDefaultShiftStart(val);
+                        setEditDefaultLunchStart(calculateScheduledLunchStart(val, editDefaultShiftEnd));
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1">
+                      Início Almoço Previsto
+                      <span className="text-[10px] text-amber-400 ml-1">(Trava 5 min)</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={editDefaultLunchStart}
+                      onChange={(e) => setEditDefaultLunchStart(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
                     />
                   </div>
@@ -3058,6 +3136,9 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     />
                   </div>
                 </div>
+                <p className="text-[10px] text-zinc-400 mt-2">
+                  🔒 <strong>Regras do Ponto:</strong> A entrada só é liberada a partir de 5 minutos antes da Entrada. A saída para almoço só é liberada 5 minutos antes do Início Previsto do Almoço.
+                </p>
               </div>
 
               {/* SEÇÃO: REMUNERAÇÃO, LOTAÇÃO E BENEFÍCIO SALÁRIO FAMÍLIA (CLT) */}
@@ -3067,7 +3148,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                   <span className="text-[10px] text-emerald-400 font-semibold">Regras CLT / INSS</span>
                 </span>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-zinc-400 mb-1 font-medium">Salário Base Mensal (R$) *</label>
                     <input
@@ -3081,7 +3162,22 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                   </div>
 
                   <div>
-                    <label className="block text-zinc-400 mb-1 font-medium">Loja Pagadora do Contracheque</label>
+                    <label className="block text-zinc-400 mb-1 font-medium">
+                      Gratificação Mensal (R$)
+                      <span className="text-[10px] text-emerald-400 ml-1 font-normal">(CLT 457 §1º)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editBonusGratification}
+                      onChange={(e) => setEditBonusGratification(e.target.value)}
+                      placeholder="Ex: 500.00"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-zinc-500 mt-0.5 block">Integra férias e 13º</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-400 mb-1 font-medium">Loja Pagadora</label>
                     <select
                       value={editPayrollStoreId}
                       onChange={(e) => setEditPayrollStoreId(e.target.value)}
@@ -3089,7 +3185,7 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
                     >
                       {stores.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} ({s.code}) - {s.razaoSocial || s.name}
+                          {s.name} ({s.code})
                         </option>
                       ))}
                     </select>
@@ -3386,12 +3482,15 @@ export const EmployeesAndUsersManager: React.FC<EmployeesAndUsersManagerProps> =
 
       {/* MODAL 1: DESLIGAMENTO DE COLABORADOR / RESCISÃO CONTRATUAL & TRCT EM PDF */}
       {dismissingEmployee && (() => {
-        const baseSalary = StorageService.getPayrollConfigs().find((c) => c.employeeId === dismissingEmployee.id)?.baseSalary || 2000;
+        const empCfg = StorageService.getPayrollConfigs().find((c) => c.employeeId === dismissingEmployee.id);
+        const baseSalary = empCfg?.baseSalary || 2000;
+        const bonusGratification = empCfg?.bonusGratification || 0;
         const storeObj = stores.find((s) => s.id === (dismissingEmployee.payrollStoreId || dismissingEmployee.storeId)) || stores[0];
 
         const calculation = PayrollCalculatorService.calculateSeverance({
           employee: dismissingEmployee,
           baseSalary,
+          bonusGratification,
           admissionDate: dismissingEmployee.admissionDate || '2026-08-01',
           dismissalDate,
           reason: dismissalReason,

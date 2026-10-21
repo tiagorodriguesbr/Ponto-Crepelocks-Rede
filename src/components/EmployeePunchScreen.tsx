@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { UserAccount, PunchRecord, Store, PunchType, ScheduleDay, MedicalCertificate, OccurrenceRecord } from '../types';
 import { ClockWidget } from './ClockWidget';
-import { StorageService } from '../services/storage';
+import { StorageService, calculateScheduledLunchStart, timeToMinutes } from '../services/storage';
 import { PayrollCalculatorService } from '../services/payrollCalculator';
 import { jsPDF } from 'jspdf';
 
@@ -100,25 +100,66 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
 
   const allCompletedToday = hasEntry && hasLunchStart && hasLunchEnd && hasExit;
 
-  // Limitador de Ponto: entrada permitida apenas com até 5 minutos de antecedência
+  // Relógio reativo para atualizar os bloqueios minuto a minuto sem precisar recarregar a página
+  const [currentClock, setCurrentClock] = useState<Date>(() => new Date());
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentClock(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const todaySchedule = schedules.find((s) => s.employeeId === currentUser.id && s.date === todayStr);
   const scheduledEntryTime = todaySchedule?.shiftStart || currentUser.defaultShiftStart || '08:00';
+  const scheduledExitTime = todaySchedule?.shiftEnd || currentUser.defaultShiftEnd || '16:20';
   
-  const now = new Date();
-  const nowTotalMins = now.getHours() * 60 + now.getMinutes();
-  const [schedH, schedM] = scheduledEntryTime.split(':').map(Number);
-  const schedTotalMins = (schedH || 0) * 60 + (schedM || 0);
-  const earliestAllowedMins = Math.max(0, schedTotalMins - 5);
+  const nowTotalMins = currentClock.getHours() * 60 + currentClock.getMinutes();
 
-  const isEntryLocked = !currentUser.exemptFromPunchClock && nowTotalMins < earliestAllowedMins;
-  const allowedH = Math.floor(earliestAllowedMins / 60).toString().padStart(2, '0');
-  const allowedM = (earliestAllowedMins % 60).toString().padStart(2, '0');
-  const allowedTimeStr = `${allowedH}:${allowedM}`;
+  // 1. TRAVA DE ENTRADA: 5 minutos antes do início previsto da jornada
+  const schedEntryMins = timeToMinutes(scheduledEntryTime);
+  const earliestAllowedEntryMins = Math.max(0, schedEntryMins - 5);
+  const isEntryLocked = !currentUser.exemptFromPunchClock && nowTotalMins < earliestAllowedEntryMins;
+  const allowedEntryH = Math.floor(earliestAllowedEntryMins / 60).toString().padStart(2, '0');
+  const allowedEntryM = (earliestAllowedEntryMins % 60).toString().padStart(2, '0');
+  const allowedEntryTimeStr = `${allowedEntryH}:${allowedEntryM}`;
+
+  // 2. TRAVA DE ALMOÇO: 5 minutos antes do início previsto do almoço
+  const scheduledLunchStartTime = todaySchedule?.lunchStart || currentUser.defaultLunchStart || calculateScheduledLunchStart(scheduledEntryTime, scheduledExitTime);
+  const schedLunchStartMins = timeToMinutes(scheduledLunchStartTime);
+  const earliestAllowedLunchMins = Math.max(0, schedLunchStartMins - 5);
+  const isLunchStartLocked = !currentUser.exemptFromPunchClock && (!hasEntry || nowTotalMins < earliestAllowedLunchMins);
+  const allowedLunchH = Math.floor(earliestAllowedLunchMins / 60).toString().padStart(2, '0');
+  const allowedLunchM = (earliestAllowedLunchMins % 60).toString().padStart(2, '0');
+  const allowedLunchTimeStr = `${allowedLunchH}:${allowedLunchM}`;
+
+  // 3. TRAVA DE RETORNO DO ALMOÇO: proteção contra retorno instantâneo (mínimo legal Art. 71 CLT)
+  const lunchDurationMin = currentUser.lunchDurationMin || 60;
+  const minIntervalMins = Math.min(30, Math.max(15, lunchDurationMin - 15));
+  const lunchStartMins = todayPunch?.lunchStart ? timeToMinutes(todayPunch.lunchStart) : 0;
+  const earliestReturnMins = lunchStartMins + minIntervalMins;
+  const isLunchEndLocked = !currentUser.exemptFromPunchClock && hasLunchStart && !hasLunchEnd && (nowTotalMins < earliestReturnMins);
+  const allowedReturnH = Math.floor(earliestReturnMins / 60).toString().padStart(2, '0');
+  const allowedReturnM = (earliestReturnMins % 60).toString().padStart(2, '0');
+  const allowedReturnTimeStr = `${allowedReturnH}:${allowedReturnM}`;
 
   const handlePunch = (type: PunchType) => {
     if (type === 'entry' && isEntryLocked) {
       setPunchFeedback({
-        message: `Ponto bloqueado: Seu horário de entrada é às ${scheduledEntryTime}. A batida é liberada a partir das ${allowedTimeStr} (5 minutos de antecedência).`
+        message: `Ponto bloqueado: Seu horário contratual de entrada é às ${scheduledEntryTime}. A batida é liberada a partir das ${allowedEntryTimeStr} (5 minutos de antecedência).`
+      });
+      return;
+    }
+
+    if (type === 'lunchStart' && isLunchStartLocked) {
+      setPunchFeedback({
+        message: `Ponto bloqueado: Seu horário previsto de saída para almoço é às ${scheduledLunchStartTime}. O registro só é liberado a partir das ${allowedLunchTimeStr} (5 minutos de antecedência).`
+      });
+      return;
+    }
+
+    if (type === 'lunchEnd' && isLunchEndLocked) {
+      setPunchFeedback({
+        message: `Intervalo em andamento: Conforme o Art. 71 da CLT, o retorno de refeição só é liberado a partir das ${allowedReturnTimeStr} (mínimo de ${minIntervalMins} min de pausa).`
       });
       return;
     }
@@ -448,23 +489,23 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
                       <button
                         onClick={() => {
                           setPunchFeedback({
-                            message: `Ponto bloqueado: Seu horário contratual de entrada é às ${scheduledEntryTime}. O ponto só é liberado a partir das ${allowedTimeStr} (5 minutos de antecedência).`
+                            message: `Ponto bloqueado: Seu horário contratual de entrada é às ${scheduledEntryTime}. O ponto só é liberado a partir das ${allowedEntryTimeStr} (5 minutos de antecedência).`
                           });
                         }}
                         className="w-full py-2.5 px-2 rounded-lg text-xs font-bold bg-zinc-800/90 text-amber-300 border border-amber-500/30 transition-all flex items-center justify-center gap-1.5 cursor-not-allowed hover:bg-zinc-800 shadow"
-                        title={`Entrada liberada às ${allowedTimeStr}`}
+                        title={`Entrada liberada às ${allowedEntryTimeStr}`}
                       >
                         <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Liberado às {allowedTimeStr}</span>
+                        <span>Liberado às {allowedEntryTimeStr}</span>
                       </button>
                       <p className="text-[10px] text-amber-400/90 text-center leading-tight">
-                        Liberado às {allowedTimeStr} (5 min antes das {scheduledEntryTime})
+                        Liberado às {allowedEntryTimeStr} (5 min antes das {scheduledEntryTime})
                       </p>
                     </div>
                   ) : (
                     <button
                       onClick={() => handlePunch('entry')}
-                      className="w-full py-2.5 px-3 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5"
+                      className="w-full py-2.5 px-3 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <span>Registrar Entrada</span>
                       <ChevronRight className="w-3.5 h-3.5" />
@@ -512,15 +553,35 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
                         <CheckCircle2 className="w-3 h-3" /> Registrado
                       </span>
                     </div>
+                  ) : !hasEntry ? (
+                    <button
+                      disabled
+                      className="w-full py-2.5 px-3 rounded-lg text-xs font-bold bg-zinc-800/60 text-zinc-500 cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      <span>Aguardando Entrada</span>
+                    </button>
+                  ) : isLunchStartLocked ? (
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={() => {
+                          setPunchFeedback({
+                            message: `Ponto bloqueado: Seu horário previsto de saída para almoço é às ${scheduledLunchStartTime}. O registro só é liberado a partir das ${allowedLunchTimeStr} (5 minutos de antecedência).`
+                          });
+                        }}
+                        className="w-full py-2.5 px-2 rounded-lg text-xs font-bold bg-zinc-800/90 text-amber-300 border border-amber-500/30 transition-all flex items-center justify-center gap-1.5 cursor-not-allowed hover:bg-zinc-800 shadow"
+                        title={`Saída para almoço liberada às ${allowedLunchTimeStr}`}
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Liberado às {allowedLunchTimeStr}</span>
+                      </button>
+                      <p className="text-[10px] text-amber-400/90 text-center leading-tight">
+                        Liberado às {allowedLunchTimeStr} (5 min antes das {scheduledLunchStartTime})
+                      </p>
+                    </div>
                   ) : (
                     <button
                       onClick={() => handlePunch('lunchStart')}
-                      disabled={!hasEntry}
-                      className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                        hasEntry
-                          ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-950/40'
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                      }`}
+                      className="w-full py-2.5 px-3 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white transition-all shadow-md shadow-amber-950/40 flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <span>Saída Almoço</span>
                       <ChevronRight className="w-3.5 h-3.5" />
@@ -568,15 +629,35 @@ export const EmployeePunchScreen: React.FC<EmployeePunchScreenProps> = ({
                         <CheckCircle2 className="w-3 h-3" /> Registrado
                       </span>
                     </div>
+                  ) : !hasLunchStart ? (
+                    <button
+                      disabled
+                      className="w-full py-2.5 px-3 rounded-lg text-xs font-bold bg-zinc-800/60 text-zinc-500 cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      <span>Aguardando Saída Almoço</span>
+                    </button>
+                  ) : isLunchEndLocked ? (
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={() => {
+                          setPunchFeedback({
+                            message: `Intervalo em andamento: Conforme o Art. 71 da CLT, o retorno de refeição só é liberado a partir das ${allowedReturnTimeStr} (mínimo de ${minIntervalMins} min de intervalo).`
+                          });
+                        }}
+                        className="w-full py-2.5 px-2 rounded-lg text-xs font-bold bg-zinc-800/90 text-amber-300 border border-amber-500/30 transition-all flex items-center justify-center gap-1.5 cursor-not-allowed hover:bg-zinc-800 shadow"
+                        title={`Retorno liberado às ${allowedReturnTimeStr}`}
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Intervalo até {allowedReturnTimeStr}</span>
+                      </button>
+                      <p className="text-[10px] text-amber-400/90 text-center leading-tight">
+                        Pausa obrigatória (Liberado às {allowedReturnTimeStr})
+                      </p>
+                    </div>
                   ) : (
                     <button
                       onClick={() => handlePunch('lunchEnd')}
-                      disabled={!hasLunchStart}
-                      className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                        hasLunchStart
-                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40'
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                      }`}
+                      className="w-full py-2.5 px-3 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <span>Retorno Almoço</span>
                       <ChevronRight className="w-3.5 h-3.5" />

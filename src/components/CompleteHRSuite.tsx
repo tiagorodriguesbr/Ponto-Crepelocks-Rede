@@ -27,7 +27,9 @@ import {
   X,
   FileCheck,
   Building2,
-  Percent
+  Percent,
+  Edit,
+  Sliders
 } from 'lucide-react';
 import {
   UserAccount,
@@ -36,7 +38,8 @@ import {
   ThirteenthSalaryRecord,
   MedicalExamRecord,
   DisciplinaryNoticeRecord,
-  EmployeeBenefitCard
+  EmployeeBenefitCard,
+  PayrollEmployeeConfig
 } from '../types';
 import { StorageService } from '../services/storage';
 import { PayrollCalculatorService } from '../services/payrollCalculator';
@@ -98,6 +101,8 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
   // Férias Modal
   const [showVacationModal, setShowVacationModal] = useState<boolean>(false);
   const [vacationEmpId, setVacationEmpId] = useState<string>('');
+  const [vacationBaseSalary, setVacationBaseSalary] = useState<string>('1600.00');
+  const [vacationBonusGratification, setVacationBonusGratification] = useState<string>('0');
   const [vacationDays, setVacationDays] = useState<number>(30);
   const [vacationStartDate, setVacationStartDate] = useState<string>(() => {
     const d = new Date();
@@ -109,8 +114,11 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
   const [vacationAdvance13th, setVacationAdvance13th] = useState<boolean>(false);
   const [vacationNotes, setVacationNotes] = useState<string>('');
 
-  // 13º Salário Simulation Year
+  // 13º Salário Simulation Year & Remuneração Editor
   const [thirteenthYear, setThirteenthYear] = useState<number>(() => new Date().getFullYear());
+  const [editing13thEmp, setEditing13thEmp] = useState<UserAccount | null>(null);
+  const [edit13thBaseSalary, setEdit13thBaseSalary] = useState<string>('1600.00');
+  const [edit13thBonusGratification, setEdit13thBonusGratification] = useState<string>('0');
 
   // Novo Exame Médico (ASO) Modal
   const [showExamModal, setShowExamModal] = useState<boolean>(false);
@@ -140,21 +148,164 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
 
   // Visualização de Ficha de Registro
   const [viewingFichaEmp, setViewingFichaEmp] = useState<UserAccount | null>(null);
+  const [refreshKey, setRefreshKey] = useState<number>(0);
 
-  // Helper to get base salary of an employee
-  const getEmployeeSalary = (empId: string): number => {
+  // Modal de Ajuste de Benefícios em Folha
+  const [editingBenefitsEmp, setEditingBenefitsEmp] = useState<UserAccount | null>(null);
+  const [benefitVtPct, setBenefitVtPct] = useState<string>('6');
+  const [benefitVtZero, setBenefitVtZero] = useState<boolean>(false);
+  const [benefitVrPct, setBenefitVrPct] = useState<string>('0');
+  const [benefitVrZero, setBenefitVrZero] = useState<boolean>(false);
+  const [benefitOtherAmount, setBenefitOtherAmount] = useState<string>('0');
+  const [benefitOtherDesc, setBenefitOtherDesc] = useState<string>('');
+
+  // Helper completo para obter remuneração e gratificação habitual (CLT Art. 457 § 1º)
+  const getEmployeeSalaryDetails = (empId: string) => {
     const cfg = StorageService.getPayrollConfigs().find((c) => c.employeeId === empId);
-    if (cfg && cfg.baseSalary > 0) return cfg.baseSalary;
     const emp = users.find((u) => u.id === empId);
-    return emp?.role === 'dono' ? 12500 : 1600;
+    const baseSalary = Number(cfg?.baseSalary ?? (emp?.role === 'dono' ? 12500 : 1600));
+    const bonusGratification = Number(cfg?.bonusGratification ?? (emp?.role === 'dono' ? 2500 : 0));
+    const insalubridadePct = Number(cfg?.insalubridadePct ?? 0);
+    const insalubridadePay = insalubridadePct > 0 ? Math.round(1412.00 * (insalubridadePct / 100) * 100) / 100 : 0;
+    
+    // Remuneração Integral: Salário Fixo + Gratificação Mensal Habitual + Adicionais Legais (CLT Art. 457 § 1º)
+    const totalRemuneration = Math.round((baseSalary + bonusGratification + insalubridadePay) * 100) / 100;
+
+    return {
+      baseSalary,
+      bonusGratification,
+      insalubridadePct,
+      insalubridadePay,
+      totalRemuneration,
+      salary: totalRemuneration,
+      config: cfg
+    };
+  };
+
+  // Retorna a remuneração integral padrão para cálculos trabalhistas
+  const getEmployeeSalary = (empId: string): number => {
+    return getEmployeeSalaryDetails(empId).totalRemuneration;
   };
 
   // Helper to format currency
   const fmtMoney = (val: number) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // ==========================================
-  // HANDLERS: FÉRIAS
+  // HANDLERS: BENEFÍCIOS
   // ==========================================
+  const handleOpenBenefitsModal = (emp: UserAccount) => {
+    const cfg = StorageService.getPayrollConfigs().find((c) => c.employeeId === emp.id);
+    const vtPctVal = cfg?.vtDiscountPct ?? (emp.role === 'dono' ? 0 : 6);
+    const vrPctVal = cfg?.vrVaDiscountPct ?? 0;
+    const isVtZero = cfg?.manualVtOverride === 0 || vtPctVal === 0 || emp.role === 'dono';
+    const isVrZero = cfg?.manualVrVaOverride === 0 || vrPctVal === 0 || emp.role === 'dono';
+
+    setEditingBenefitsEmp(emp);
+    setBenefitVtZero(isVtZero);
+    setBenefitVtPct(isVtZero ? '0' : String(vtPctVal));
+    setBenefitVrZero(isVrZero);
+    setBenefitVrPct(isVrZero ? '0' : String(vrPctVal));
+    setBenefitOtherAmount(String(cfg?.otherDiscountsAmount || 0));
+    setBenefitOtherDesc(cfg?.otherDiscountsDescription || '');
+  };
+
+  const handleSaveBenefits = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBenefitsEmp) return;
+
+    const currentConfigs = StorageService.getPayrollConfigs();
+    const existing = currentConfigs.find((c) => c.employeeId === editingBenefitsEmp.id);
+    const baseSal = existing?.baseSalary ?? (editingBenefitsEmp.role === 'dono' ? 12500 : 1600);
+    const bonusGrat = existing?.bonusGratification ?? (editingBenefitsEmp.role === 'dono' ? 2500 : 0);
+
+    const vtPctNum = benefitVtZero ? 0 : Math.max(0, Math.min(6, parseFloat(benefitVtPct.replace(',', '.')) || 0));
+    const vrPctNum = benefitVrZero ? 0 : Math.max(0, Math.min(20, parseFloat(benefitVrPct.replace(',', '.')) || 0));
+    const otherVal = Math.max(0, parseFloat(benefitOtherAmount.replace(',', '.')) || 0);
+
+    const updatedCfg: PayrollEmployeeConfig = {
+      ...(existing || {
+        employeeId: editingBenefitsEmp.id,
+        payrollStoreId: editingBenefitsEmp.payrollStoreId || editingBenefitsEmp.storeId,
+        monthYear: new Date().toISOString().slice(0, 7),
+        baseSalary: baseSal,
+        bonusGratification: bonusGrat
+      }),
+      employeeId: editingBenefitsEmp.id,
+      baseSalary: baseSal,
+      bonusGratification: bonusGrat,
+      vtDiscountPct: vtPctNum,
+      manualVtOverride: benefitVtZero ? 0 : null,
+      vrVaDiscountPct: vrPctNum,
+      manualVrVaOverride: benefitVrZero ? 0 : null,
+      otherDiscountsAmount: otherVal,
+      otherDiscountsDescription: benefitOtherDesc.trim(),
+      updatedAt: new Date().toISOString()
+    };
+
+    StorageService.updatePayrollConfig(updatedCfg);
+    setEditingBenefitsEmp(null);
+    setRefreshKey((k) => k + 1);
+    onDataUpdated();
+    showToast(`Benefícios de ${editingBenefitsEmp.name} atualizados com sucesso!`);
+  };
+
+  const handleOpen13thModal = (emp: UserAccount) => {
+    const details = getEmployeeSalaryDetails(emp.id);
+    setEditing13thEmp(emp);
+    setEdit13thBaseSalary(String(details.baseSalary));
+    setEdit13thBonusGratification(String(details.bonusGratification));
+  };
+
+  const handleSave13thSalary = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editing13thEmp) return;
+
+    const parsedBase = Math.max(0, parseFloat(edit13thBaseSalary.replace(',', '.')) || 0);
+    const parsedBonus = Math.max(0, parseFloat(edit13thBonusGratification.replace(',', '.')) || 0);
+
+    const currentConfigs = StorageService.getPayrollConfigs();
+    const existing = currentConfigs.find((c) => c.employeeId === editing13thEmp.id);
+    const updatedCfg: PayrollEmployeeConfig = {
+      ...(existing || {
+        employeeId: editing13thEmp.id,
+        payrollStoreId: editing13thEmp.payrollStoreId || editing13thEmp.storeId,
+        monthYear: new Date().toISOString().slice(0, 7),
+        vtDiscountPct: editing13thEmp.role === 'dono' ? 0 : 6,
+        vrVaDiscountPct: 0,
+        otherDiscountsAmount: 0
+      }),
+      employeeId: editing13thEmp.id,
+      baseSalary: parsedBase,
+      bonusGratification: parsedBonus,
+      updatedAt: new Date().toISOString()
+    };
+
+    StorageService.updatePayrollConfig(updatedCfg);
+    setEditing13thEmp(null);
+    setRefreshKey((k) => k + 1);
+    onDataUpdated();
+    showToast(`Remuneração para 13º de ${editing13thEmp.name} atualizada: ${fmtMoney(parsedBase + parsedBonus)} (Salário: ${fmtMoney(parsedBase)} + Gratificação: ${fmtMoney(parsedBonus)})`);
+  };
+
+  // ==========================================
+  // HANDLERS: FÉRIAS (CLT Art. 129 a 145 & Art. 457 § 1º)
+  // ==========================================
+  const handleOpenVacationModal = (empId?: string) => {
+    const targetId = empId || vacationEmpId || users[0]?.id || '';
+    setVacationEmpId(targetId);
+    const details = getEmployeeSalaryDetails(targetId);
+    setVacationBaseSalary(String(details.baseSalary));
+    setVacationBonusGratification(String(details.bonusGratification));
+    setShowVacationModal(true);
+  };
+
+  const handleVacationEmpChange = (empId: string) => {
+    setVacationEmpId(empId);
+    const details = getEmployeeSalaryDetails(empId);
+    setVacationBaseSalary(String(details.baseSalary));
+    setVacationBonusGratification(String(details.bonusGratification));
+  };
+
   const handleSaveVacation = (e: React.FormEvent) => {
     e.preventDefault();
     const emp = users.find((u) => u.id === vacationEmpId);
@@ -163,19 +314,24 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
       return;
     }
 
-    const salary = getEmployeeSalary(emp.id);
-    const dailyRate = salary / 30;
+    const { insalubridadePay } = getEmployeeSalaryDetails(emp.id);
+    const parsedBase = Math.max(0, parseFloat(vacationBaseSalary.replace(',', '.')) || 0);
+    const parsedBonus = Math.max(0, parseFloat(vacationBonusGratification.replace(',', '.')) || 0);
+    
+    // Remuneração Integral: Salário Fixo + Gratificação Mensal Habitual (CLT Art. 457 § 1º)
+    const totalRemun = Math.round((parsedBase + parsedBonus + insalubridadePay) * 100) / 100;
+    const dailyRate = totalRemun / 30;
 
     const actualDays = vacationSellAbono ? vacationDays - vacationAbonoDays : vacationDays;
-    const vacationPay = dailyRate * actualDays;
-    const oneThird = vacationPay / 3;
+    const vacationPay = Math.round(dailyRate * actualDays * 100) / 100;
+    const oneThird = Math.round((vacationPay / 3) * 100) / 100;
 
-    const abonoPay = vacationSellAbono ? dailyRate * vacationAbonoDays : 0;
-    const abonoOneThird = abonoPay / 3;
+    const abonoPay = vacationSellAbono ? Math.round(dailyRate * vacationAbonoDays * 100) / 100 : 0;
+    const abonoOneThird = vacationSellAbono ? Math.round((abonoPay / 3) * 100) / 100 : 0;
 
-    const advance13th = vacationAdvance13th ? salary * 0.5 : 0;
+    const advance13th = vacationAdvance13th ? Math.round(totalRemun * 0.5 * 100) / 100 : 0;
 
-    // INSS & IRRF sobre as férias
+    // INSS & IRRF sobre as férias (incide sobre gozo + 1/3; abono pecuniário é indenizatório e isento)
     const inss = PayrollCalculatorService.calculateCltInss(vacationPay + oneThird).amount;
     const irrf = PayrollCalculatorService.calculateCltIrpf(
       vacationPay + oneThird,
@@ -183,7 +339,7 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
       emp.dependentsList?.filter((d) => d.eligibleIrpfDeduction).length || 0
     ).amount;
 
-    const netPay = vacationPay + oneThird + abonoPay + abonoOneThird + advance13th - (inss + irrf);
+    const netPay = Math.round((vacationPay + oneThird + abonoPay + abonoOneThird + advance13th - (inss + irrf)) * 100) / 100;
 
     const start = new Date(vacationStartDate);
     const end = new Date(start);
@@ -195,6 +351,25 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
     aqEnd.setFullYear(aqEnd.getFullYear() + 1);
     const concEnd = new Date(aqEnd);
     concEnd.setFullYear(concEnd.getFullYear() + 1);
+
+    // Sincronizar salário e gratificação com a configuração de folha
+    const currentConfigs = StorageService.getPayrollConfigs();
+    const existing = currentConfigs.find((c) => c.employeeId === emp.id);
+    const updatedCfg: PayrollEmployeeConfig = {
+      ...(existing || {
+        employeeId: emp.id,
+        payrollStoreId: emp.payrollStoreId || emp.storeId,
+        monthYear: new Date().toISOString().slice(0, 7),
+        vtDiscountPct: emp.role === 'dono' ? 0 : 6,
+        vrVaDiscountPct: 0,
+        otherDiscountsAmount: 0
+      }),
+      employeeId: emp.id,
+      baseSalary: parsedBase,
+      bonusGratification: parsedBonus,
+      updatedAt: new Date().toISOString()
+    };
+    StorageService.updatePayrollConfig(updatedCfg);
 
     const newVac: VacationRecord = {
       id: `vac-${Date.now()}`,
@@ -211,7 +386,9 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
       sellAbonoPecuniario: vacationSellAbono,
       abonoDays: vacationSellAbono ? vacationAbonoDays : 0,
       advanceFirstThirteenth: vacationAdvance13th,
-      baseSalary: salary,
+      baseSalary: parsedBase,
+      bonusGratification: parsedBonus,
+      totalRemuneration: totalRemun,
       vacationPay,
       oneThirdBonus: oneThird,
       abonoPay,
@@ -229,8 +406,9 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
     StorageService.addVacation(newVac);
     setVacations(StorageService.getVacations());
     setShowVacationModal(false);
+    setRefreshKey((k) => k + 1);
     onDataUpdated();
-    showToast(`Férias de ${emp.name} programadas com sucesso!`);
+    showToast(`Férias de ${emp.name} programadas! Remuneração Integral: ${fmtMoney(totalRemun)} (Salário: ${fmtMoney(parsedBase)} + Gratificação: ${fmtMoney(parsedBonus)})`);
   };
 
   // Generate Official Recibo de Férias PDF
@@ -254,9 +432,9 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
 
     // Box Empresa e Colaborador
     doc.setFillColor(248, 250, 252);
-    doc.rect(14, 38, 182, 34, 'F');
+    doc.rect(14, 38, 182, 38, 'F');
     doc.setDrawColor(203, 213, 225);
-    doc.rect(14, 38, 182, 34, 'D');
+    doc.rect(14, 38, 182, 38, 'D');
 
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(8);
@@ -265,49 +443,62 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
     doc.text(`CNPJ: ${store.cnpj || 'Não informado'}`, 120, 44);
 
     doc.setFont('helvetica', 'normal');
-    doc.text(`Colaborador(a): ${vac.employeeName.toUpperCase()}`, 18, 51);
-    doc.text(`CPF: ${emp?.cpf || '000.000.000-00'}`, 120, 51);
-    doc.text(`Cargo: ${emp?.positionTitle || 'Atendente'}`, 18, 57);
-    doc.text(`Data de Admissão: ${emp?.admissionDate || 'Não informada'}`, 120, 57);
-    doc.text(`Período Aquisitivo: ${vac.aquisitiveStart} até ${vac.aquisitiveEnd}`, 18, 64);
-    doc.text(`Período de Gozo: ${vac.startDate} até ${vac.endDate} (${vac.daysTaken} dias)`, 120, 64);
+    doc.text(`Colaborador(a): ${vac.employeeName.toUpperCase()}`, 18, 50);
+    doc.text(`CPF: ${emp?.cpf || '000.000.000-00'}`, 120, 50);
+    doc.text(`Cargo: ${emp?.positionTitle || 'Atendente'}`, 18, 56);
+    doc.text(`Data de Admissão: ${emp?.admissionDate || 'Não informada'}`, 120, 56);
+    doc.text(`Período Aquisitivo: ${vac.aquisitiveStart} até ${vac.aquisitiveEnd}`, 18, 62);
+    doc.text(`Período de Gozo: ${vac.startDate} até ${vac.endDate} (${vac.daysTaken} dias)`, 120, 62);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Remuneração Base de Férias: R$ ${(vac.totalRemuneration || (vac.baseSalary + (vac.bonusGratification || 0))).toFixed(2)} (Salário: R$ ${vac.baseSalary.toFixed(2)}${vac.bonusGratification ? ` + Gratificação Mensal: R$ ${vac.bonusGratification.toFixed(2)}` : ''})`, 18, 69);
 
     // Tabela de Verbas
     doc.setFillColor(30, 41, 59);
-    doc.rect(14, 76, 182, 7.5, 'F');
+    doc.rect(14, 80, 182, 7.5, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('CÓD', 18, 81);
-    doc.text('DESCRIÇÃO DA VERBA DE FÉRIAS', 32, 81);
-    doc.text('REF', 105, 81);
-    doc.text('PROVENTOS (R$)', 130, 81);
-    doc.text('DESCONTOS (R$)', 165, 81);
+    doc.text('CÓD', 18, 85);
+    doc.text('DESCRIÇÃO DA VERBA DE FÉRIAS', 32, 85);
+    doc.text('REF', 105, 85);
+    doc.text('PROVENTOS (R$)', 130, 85);
+    doc.text('DESCONTOS (R$)', 165, 85);
 
-    let y = 89;
+    let y = 93;
     doc.setTextColor(30, 41, 59);
     doc.setFont('helvetica', 'normal');
 
+    const bonusVal = vac.bonusGratification || 0;
+    const baseDaily = (vac.baseSalary || 0) / 30;
+    const bonusDaily = bonusVal / 30;
+    const baseVacPay = Math.round(baseDaily * vac.daysTaken * 100) / 100;
+    const bonusVacPay = Math.round(bonusDaily * vac.daysTaken * 100) / 100;
+
     const lines = [
-      { cod: '101', desc: `REMUNERAÇÃO DOS DIAS DE FÉRIAS (${vac.daysTaken} DIAS)`, ref: `${vac.daysTaken}d`, prov: vac.vacationPay, desc: 0 },
-      { cod: '102', desc: '1/3 CONSTITUCIONAL DE FÉRIAS (ART. 7º, XVII CF)', ref: '33.33%', prov: vac.oneThirdBonus, desc: 0 }
+      { cod: '101', desc: `DIAS DE FÉRIAS - SALÁRIO BASE (${vac.daysTaken} DIAS)`, ref: `${vac.daysTaken}d`, prov: baseVacPay, desconto: 0 },
     ];
 
+    if (bonusVal > 0) {
+      lines.push({ cod: '103', desc: `GRATIFICAÇÃO MENSAL HABITUAL S/ FÉRIAS (CLT ART. 457 § 1º)`, ref: `${vac.daysTaken}d`, prov: bonusVacPay, desconto: 0 });
+    }
+
+    lines.push({ cod: '102', desc: '1/3 CONSTITUCIONAL DE FÉRIAS (ART. 7º, XVII CF - S/ SALÁRIO + GRATIFICAÇÃO)', ref: '33.33%', prov: vac.oneThirdBonus, desconto: 0 });
+
     if (vac.sellAbonoPecuniario && vac.abonoPay > 0) {
-      lines.push({ cod: '105', desc: `ABONO PECUNIÁRIO (VENDA DE ${vac.abonoDays} DIAS - ART. 143 CLT)`, ref: `${vac.abonoDays}d`, prov: vac.abonoPay, desc: 0 });
-      lines.push({ cod: '106', desc: '1/3 CONSTITUCIONAL SOBRE O ABONO PECUNIÁRIO', ref: '33.33%', prov: vac.abonoOneThirdPay, desc: 0 });
+      lines.push({ cod: '105', desc: `ABONO PECUNIÁRIO (VENDA DE ${vac.abonoDays} DIAS - ART. 143 CLT)`, ref: `${vac.abonoDays}d`, prov: vac.abonoPay, desconto: 0 });
+      lines.push({ cod: '106', desc: '1/3 CONSTITUCIONAL SOBRE O ABONO PECUNIÁRIO', ref: '33.33%', prov: vac.abonoOneThirdPay, desconto: 0 });
     }
 
     if (vac.advanceFirstThirteenth && vac.advanceThirteenthAmount > 0) {
-      lines.push({ cod: '120', desc: 'ADIANTAMENTO DA 1ª PARCELA DO 13º SALÁRIO', ref: '50%', prov: vac.advanceThirteenthAmount, desc: 0 });
+      lines.push({ cod: '120', desc: 'ADIANTAMENTO DA 1ª PARCELA DO 13º SALÁRIO', ref: '50%', prov: vac.advanceThirteenthAmount, desconto: 0 });
     }
 
     if (vac.inssDiscount > 0) {
-      lines.push({ cod: '501', desc: 'CONTRIBUIÇÃO PREVIDENCIÁRIA INSS S/ FÉRIAS', ref: 'Tabela', prov: 0, desc: vac.inssDiscount });
+      lines.push({ cod: '501', desc: 'CONTRIBUIÇÃO PREVIDENCIÁRIA INSS S/ FÉRIAS', ref: 'Tabela', prov: 0, desconto: vac.inssDiscount });
     }
 
     if (vac.irpfDiscount > 0) {
-      lines.push({ cod: '502', desc: 'IMPOSTO DE RENDA RETIDO NA FONTE (IRRF) S/ FÉRIAS', ref: 'Tabela', prov: 0, desc: vac.irpfDiscount });
+      lines.push({ cod: '502', desc: 'IMPOSTO DE RENDA RETIDO NA FONTE (IRRF) S/ FÉRIAS', ref: 'Tabela', prov: 0, desconto: vac.irpfDiscount });
     }
 
     lines.forEach((l) => {
@@ -315,7 +506,7 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
       doc.text(l.desc, 32, y);
       doc.text(l.ref, 105, y);
       doc.text(l.prov > 0 ? l.prov.toFixed(2) : '-', 135, y);
-      doc.text(l.desc > 0 ? l.desc.toFixed(2) : '-', 170, y);
+      doc.text(l.desconto > 0 ? l.desconto.toFixed(2) : '-', 170, y);
       y += 6;
     });
 
@@ -360,12 +551,12 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
   };
 
   // ==========================================
-  // HANDLERS: 13º SALÁRIO
+  // HANDLERS: 13º SALÁRIO (CLT Art. 457 § 1º & Lei 4.090/62)
   // ==========================================
-  // Calculate 13th preview for all employees
+  // Calculate 13th preview for all employees integrating base salary + habitual gratifications
   const thirteenthList = useMemo(() => {
     return filteredEmployees.map((emp) => {
-      const salary = getEmployeeSalary(emp.id);
+      const { baseSalary, bonusGratification, totalRemuneration } = getEmployeeSalaryDetails(emp.id);
       const adm = new Date(emp.admissionDate || `${thirteenthYear}-01-01`);
       
       // Calculate months worked in current year
@@ -380,8 +571,8 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
         monthsWorked = 0;
       }
 
-      const totalDueYear = (salary / 12) * monthsWorked;
-      const firstInstallmentGross = totalDueYear * 0.5; // 50% sem descontos
+      const totalDueYear = Math.round(((totalRemuneration / 12) * monthsWorked) * 100) / 100;
+      const firstInstallmentGross = Math.round(totalDueYear * 0.5 * 100) / 100; // 50% sem descontos
 
       const inss = PayrollCalculatorService.calculateCltInss(totalDueYear).amount;
       const irrf = PayrollCalculatorService.calculateCltIrpf(
@@ -390,14 +581,17 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
         emp.dependentsList?.filter((d) => d.eligibleIrpfDeduction).length || 0
       ).amount;
 
-      const secondInstallmentGross = totalDueYear - firstInstallmentGross;
-      const secondInstallmentNet = Math.max(0, totalDueYear - firstInstallmentGross - (inss + irrf));
+      const secondInstallmentGross = Math.round((totalDueYear - firstInstallmentGross) * 100) / 100;
+      const secondInstallmentNet = Math.max(0, Math.round((totalDueYear - firstInstallmentGross - (inss + irrf)) * 100) / 100);
 
       const existingRecord = thirteenthRecords.find((r) => r.employeeId === emp.id && r.year === thirteenthYear);
 
       return {
         emp,
-        salary,
+        baseSalary,
+        bonusGratification,
+        totalRemuneration,
+        salary: totalRemuneration,
         monthsWorked,
         totalDueYear,
         firstInstallmentGross,
@@ -409,7 +603,7 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
         paidSecond: existingRecord?.paidSecondInstallment || false
       };
     });
-  }, [filteredEmployees, thirteenthYear, thirteenthRecords]);
+  }, [filteredEmployees, thirteenthYear, thirteenthRecords, refreshKey]);
 
   const handleToggle13thPayment = (empId: string, installment: 'first' | 'second') => {
     const target = thirteenthList.find((t) => t.emp.id === empId);
@@ -423,7 +617,9 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
       storeId: target.emp.storeId,
       year: thirteenthYear,
       monthsWorked: target.monthsWorked,
-      baseSalary: target.salary,
+      baseSalary: target.baseSalary,
+      bonusGratification: target.bonusGratification,
+      totalRemuneration: target.totalRemuneration,
       firstInstallmentGross: target.firstInstallmentGross,
       secondInstallmentGross: target.secondInstallmentGross,
       inssSecondInstallment: target.inssSecondInstallment,
@@ -447,6 +643,116 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
     StorageService.updateThirteenthSalary(updated);
     setThirteenthRecords(StorageService.getThirteenthSalaries());
     showToast(`Status da parcela do 13º de ${target.emp.name} atualizado!`);
+  };
+
+  // Gerador Oficial de Recibo do 13º Salário PDF
+  const handleGenerate13thPdf = (item: typeof thirteenthList[0]) => {
+    const store = stores.find((s) => s.id === item.emp.storeId) || stores[0];
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    // Header institucional
+    doc.setFillColor(15, 23, 42);
+    doc.rect(14, 12, 182, 22, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text(`DEMONSTRATIVO DE 13º SALÁRIO - EXERCÍCIO ${thirteenthYear}`, 18, 21);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(209, 250, 229);
+    doc.text(`Leis Federais 4.090/62 e 4.749/65 • CLT Art. 457 § 1º • Empregador: ${(store.razaoSocial || store.name).toUpperCase()}`, 18, 28);
+
+    // Box Empresa e Colaborador
+    doc.setFillColor(248, 250, 252);
+    doc.rect(14, 38, 182, 34, 'F');
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(14, 38, 182, 34, 'D');
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Razão Social: ${store.razaoSocial || store.name}`, 18, 44);
+    doc.text(`CNPJ: ${store.cnpj || 'Não informado'}`, 120, 44);
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Colaborador(a): ${item.emp.name.toUpperCase()}`, 18, 51);
+    doc.text(`CPF: ${item.emp.cpf || '000.000.000-00'}`, 120, 51);
+    doc.text(`Cargo: ${item.emp.positionTitle}`, 18, 57);
+    doc.text(`Data de Admissão: ${item.emp.admissionDate || 'Não informada'}`, 120, 57);
+    doc.text(`Avos Devidos: ${item.monthsWorked}/12 avos no ano ${thirteenthYear}`, 18, 64);
+    doc.text(`Remuneração Base de Cálculo: R$ ${item.totalRemuneration.toFixed(2)} (Salário: R$ ${item.baseSalary.toFixed(2)}${item.bonusGratification > 0 ? ` + Gratificação: R$ ${item.bonusGratification.toFixed(2)}` : ''})`, 120, 64);
+
+    // Tabela de Verbas
+    doc.setFillColor(30, 41, 59);
+    doc.rect(14, 76, 182, 7.5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('CÓD', 18, 81);
+    doc.text('DISCRIMINAÇÃO DAS PARCELAS DO 13º', 32, 81);
+    doc.text('REF', 110, 81);
+    doc.text('PROVENTOS (R$)', 130, 81);
+    doc.text('DESCONTOS (R$)', 165, 81);
+
+    let y = 89;
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'normal');
+
+    const lines = [
+      { cod: '110', desc: `1ª PARCELA DO 13º SALÁRIO (ADIANTAMENTO 50%)`, ref: '50.00%', prov: item.firstInstallmentGross, desconto: 0 },
+      { cod: '111', desc: `2ª PARCELA DO 13º SALÁRIO (SALDO INTEGRAL)`, ref: `${item.monthsWorked}/12`, prov: item.secondInstallmentGross, desconto: 0 },
+      { cod: '510', desc: `CONTRIBUIÇÃO PREVIDENCIÁRIA INSS S/ 13º SALÁRIO`, ref: 'Tabela', prov: 0, desconto: item.inssSecondInstallment }
+    ];
+
+    if (item.irpfSecondInstallment > 0) {
+      lines.push({ cod: '511', desc: `IMPOSTO DE RENDA RETIDO NA FONTE (IRRF) S/ 13º`, ref: 'Tabela', prov: 0, desconto: item.irpfSecondInstallment });
+    }
+
+    lines.forEach((l) => {
+      doc.text(l.cod, 18, y);
+      doc.text(l.desc, 32, y);
+      doc.text(l.ref, 110, y);
+      doc.text(l.prov > 0 ? l.prov.toFixed(2) : '-', 135, y);
+      doc.text(l.desconto > 0 ? l.desconto.toFixed(2) : '-', 170, y);
+      y += 6;
+    });
+
+    // Box Totais
+    y += 4;
+    doc.setFillColor(241, 245, 249);
+    doc.rect(14, y, 182, 18, 'F');
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(14, y, 182, 18, 'D');
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Valor Bruto Anual: R$ ${item.totalDueYear.toFixed(2)}`, 18, y + 6);
+    doc.text(`1ª Parcela (Sem Descontos): R$ ${item.firstInstallmentGross.toFixed(2)}`, 105, y + 6);
+    doc.text(`Descontos Oficiais (INSS+IRRF): R$ ${(item.inssSecondInstallment + item.irpfSecondInstallment).toFixed(2)}`, 18, y + 12);
+    doc.setTextColor(5, 150, 105);
+    doc.setFontSize(9.5);
+    doc.text(`2ª PARCELA LÍQUIDA: R$ ${item.secondInstallmentNet.toFixed(2)}`, 105, y + 12);
+
+    // Canhoto de quitação
+    y += 24;
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `Declaro ter recebido da empresa o pagamento relativo à Gratificação de Natal (13º Salário) do exercício ${thirteenthYear}, na forma da Lei nº 4.090/62 e Lei nº 4.749/65, dando plena e geral quitação.`,
+      18,
+      y,
+      { maxWidth: 174 }
+    );
+
+    y += 18;
+    doc.line(18, y, 100, y);
+    doc.line(115, y, 180, y);
+    doc.setFontSize(7.5);
+    doc.text('Assinatura do Colaborador', 35, y + 4);
+    doc.text('Assinatura e Carimbo do Empregador', 125, y + 4);
+
+    doc.save(`recibo_13_salario_${item.emp.name.toLowerCase().replace(/\s+/g, '_')}_${thirteenthYear}.pdf`);
+    showToast(`PDF do recibo do 13º salário de ${item.emp.name} gerado com sucesso!`);
   };
 
   // ==========================================
@@ -730,10 +1036,7 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
               </p>
             </div>
             <button
-              onClick={() => {
-                setVacationEmpId(users[0]?.id || '');
-                setShowVacationModal(true);
-              }}
+              onClick={() => handleOpenVacationModal(users[0]?.id)}
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-950/40 cursor-pointer self-start sm:self-auto"
             >
               <Plus className="w-4 h-4" />
@@ -759,7 +1062,8 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                       <th className="px-4 py-3">Colaborador</th>
                       <th className="px-4 py-3">Período de Gozo</th>
                       <th className="px-4 py-3">Dias / Abono</th>
-                      <th className="px-4 py-3">Remuneração Base</th>
+                      <th className="px-4 py-3">Remuneração Base + Gratificação</th>
+                      <th className="px-4 py-3">Provento Férias</th>
                       <th className="px-4 py-3">1/3 Constitucional</th>
                       <th className="px-4 py-3">Líquido a Pagar</th>
                       <th className="px-4 py-3">Status</th>
@@ -767,56 +1071,66 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800 font-mono text-[11px]">
-                    {vacations.map((vac) => (
-                      <tr key={vac.id} className="hover:bg-zinc-800/40 transition-colors">
-                        <td className="px-4 py-3 font-sans font-semibold text-white">
-                          {vac.employeeName}
-                        </td>
-                        <td className="px-4 py-3 text-zinc-400">
-                          {vac.startDate} até {vac.endDate}
-                        </td>
-                        <td className="px-4 py-3 text-zinc-300">
-                          {vac.daysTaken} dias {vac.sellAbonoPecuniario ? `(+ ${vac.abonoDays}d abono)` : ''}
-                        </td>
-                        <td className="px-4 py-3 text-zinc-300">
-                          {fmtMoney(vac.vacationPay)}
-                        </td>
-                        <td className="px-4 py-3 text-emerald-400 font-semibold">
-                          +{fmtMoney(vac.oneThirdBonus)}
-                        </td>
-                        <td className="px-4 py-3 font-bold text-emerald-400 text-xs">
-                          {fmtMoney(vac.netVacationPay)}
-                        </td>
-                        <td className="px-4 py-3 font-sans">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/60 border border-emerald-500/40 text-emerald-400">
-                            {vac.status.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-sans">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleGenerateVacationPdf(vac)}
-                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-emerald-600 text-zinc-200 hover:text-white transition-all text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                              title="Baixar Recibo Oficial de Férias PDF"
-                            >
-                              <Download className="w-3 h-3" />
-                              <span>Recibo PDF</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                StorageService.deleteVacation(vac.id);
-                                setVacations(StorageService.getVacations());
-                                showToast('Férias removidas.');
-                              }}
-                              className="p-1 rounded-lg hover:bg-rose-950/50 text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
-                              title="Excluir"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {vacations.map((vac) => {
+                      const totalCalcBase = vac.totalRemuneration || (vac.baseSalary + (vac.bonusGratification || 0));
+                      return (
+                        <tr key={vac.id} className="hover:bg-zinc-800/40 transition-colors">
+                          <td className="px-4 py-3 font-sans font-semibold text-white">
+                            {vac.employeeName}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-400">
+                            {vac.startDate} até {vac.endDate}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            {vac.daysTaken} dias {vac.sellAbonoPecuniario ? `(+ ${vac.abonoDays}d abono)` : ''}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            <span className="font-bold text-white block">{fmtMoney(totalCalcBase)}</span>
+                            <span className="text-[10px] text-zinc-400 font-sans block">
+                              Base: {fmtMoney(vac.baseSalary)} {vac.bonusGratification ? `+ Grat: ${fmtMoney(vac.bonusGratification)}` : ''}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            {fmtMoney(vac.vacationPay)}
+                          </td>
+                          <td className="px-4 py-3 text-emerald-400 font-semibold">
+                            +{fmtMoney(vac.oneThirdBonus)}
+                          </td>
+                          <td className="px-4 py-3 font-bold text-emerald-400 text-xs">
+                            {fmtMoney(vac.netVacationPay)}
+                          </td>
+                          <td className="px-4 py-3 font-sans">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/60 border border-emerald-500/40 text-emerald-400">
+                              {vac.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-sans">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleGenerateVacationPdf(vac)}
+                                className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-emerald-600 text-zinc-200 hover:text-white transition-all text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                                title="Baixar Recibo Oficial de Férias PDF"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Recibo PDF</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  StorageService.deleteVacation(vac.id);
+                                  setVacations(StorageService.getVacations());
+                                  setRefreshKey((k) => k + 1);
+                                  showToast('Férias removidas.');
+                                }}
+                                className="p-1 rounded-lg hover:bg-rose-950/50 text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
+                                title="Excluir"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -837,7 +1151,7 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                 <span>Gestão da Gratificação Natalina (13º Salário) - Ano {thirteenthYear}</span>
               </h3>
               <p className="text-[11px] text-zinc-400 mt-0.5">
-                1ª Parcela (50% sem descontos até 30/nov) e 2ª Parcela (com dedução integral de INSS e IRRF até 20/dez).
+                Cálculo integral com integração legal da Gratificação Mensal Habitual (CLT Art. 457 § 1º). 1ª Parcela (50% sem descontos até 30/nov) e 2ª Parcela (com dedução integral de INSS e IRRF até 20/dez).
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -864,11 +1178,11 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                     <th className="px-4 py-3">Colaborador</th>
                     <th className="px-4 py-3">Admissão</th>
                     <th className="px-4 py-3">Avos Devidos</th>
-                    <th className="px-4 py-3">Salário Base</th>
-                    <th className="px-4 py-3">1ª Parcela (Adiantamento)</th>
+                    <th className="px-4 py-3">Remuneração Base + Gratificação</th>
+                    <th className="px-4 py-3">1ª Parcela (50% Bruto)</th>
                     <th className="px-4 py-3">INSS / IRRF 2ª Parcela</th>
                     <th className="px-4 py-3">2ª Parcela (Líquido)</th>
-                    <th className="px-4 py-3 text-right">Quitação</th>
+                    <th className="px-4 py-3 text-right">Quitação & Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800 font-mono text-[11px]">
@@ -880,7 +1194,12 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                       </td>
                       <td className="px-4 py-3 text-zinc-400">{item.emp.admissionDate || '-'}</td>
                       <td className="px-4 py-3 text-emerald-400 font-bold">{item.monthsWorked}/12 avos</td>
-                      <td className="px-4 py-3 text-zinc-300">{fmtMoney(item.salary)}</td>
+                      <td className="px-4 py-3 text-zinc-300">
+                        <span className="font-bold text-white block">{fmtMoney(item.totalRemuneration)}</span>
+                        <span className="text-[10px] text-zinc-400 font-sans block">
+                          Base: {fmtMoney(item.baseSalary)} {item.bonusGratification > 0 ? `+ Grat: ${fmtMoney(item.bonusGratification)}` : ''}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-white block">{fmtMoney(item.firstInstallmentGross)}</span>
                         <span className="text-[10px] text-zinc-500 font-sans">Sem descontos</span>
@@ -894,6 +1213,14 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                       <td className="px-4 py-3 text-right font-sans">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+                            onClick={() => handleOpen13thModal(item.emp)}
+                            className="px-2 py-1 rounded-md text-[10px] font-bold bg-zinc-800 hover:bg-zinc-700 text-emerald-400 border border-zinc-700 transition-all flex items-center gap-1 cursor-pointer"
+                            title="Ajustar Salário Base ou Gratificação Mensal do 13º"
+                          >
+                            <Sliders className="w-3 h-3 text-emerald-400" />
+                            <span>Ajustar Salário</span>
+                          </button>
+                          <button
                             onClick={() => handleToggle13thPayment(item.emp.id, 'first')}
                             className={`px-2 py-1 rounded-md text-[10px] font-bold cursor-pointer transition-all ${
                               item.paidFirst
@@ -901,7 +1228,7 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                                 : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400'
                             }`}
                           >
-                            {item.paidFirst ? '✓ 1ª Parcela Paga' : 'Pagar 1ª Parc.'}
+                            {item.paidFirst ? '✓ 1ª Parc. Paga' : 'Pagar 1ª Parc.'}
                           </button>
                           <button
                             onClick={() => handleToggle13thPayment(item.emp.id, 'second')}
@@ -911,7 +1238,14 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                                 : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400'
                             }`}
                           >
-                            {item.paidSecond ? '✓ 2ª Parcela Paga' : 'Pagar 2ª Parc.'}
+                            {item.paidSecond ? '✓ 2ª Parc. Paga' : 'Pagar 2ª Parc.'}
+                          </button>
+                          <button
+                            onClick={() => handleGenerate13thPdf(item)}
+                            className="p-1 rounded-md bg-zinc-800 hover:bg-emerald-600 text-zinc-300 hover:text-white transition-all cursor-pointer"
+                            title="Emitir Recibo do 13º Salário PDF"
+                          >
+                            <Download className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -929,69 +1263,179 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
       {/* ========================================================================= */}
       {activeSubTab === 'beneficios' && (
         <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-emerald-400" />
-              <span>Gestão de Benefícios & Encargos Sociais CLT</span>
-            </h3>
-            <p className="text-[11px] text-zinc-400 mt-0.5">
-              Vale Transporte (limite legal de 6% sobre salário básico - Lei 7.418/85), Vale Refeição / Alimentação (PAT) e Planos de Saúde.
-            </p>
+          <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                <span>Gestão de Benefícios & Encargos Sociais CLT</span>
+              </h3>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Valores reais sincronizados com a Folha de Pagamento: Vale Transporte (limite até 6% ou dispensa), Vale Refeição/Alimentação (PAT ou isenção integral) e Planos de Saúde.
+              </p>
+            </div>
+            <div className="text-xs text-zinc-400 font-mono">
+              Status: <span className="text-emerald-400 font-bold">100% Sincronizado com Folha</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredEmployees.map((emp) => {
-              const salary = getEmployeeSalary(emp.id);
-              const vtMaxDiscount = salary * 0.06;
-              const vrEstimated = 550; // Média mensal
-              const vrDiscount = vrEstimated * 0.05; // 5% política PAT
+              const { baseSalary, bonusGratification, totalRemuneration, config: cfg } = getEmployeeSalaryDetails(emp.id);
+
+              // Vale Transporte (VT): Respeita a folha real (se isento/zerado, não calcula desconto)
+              const isVtZeroed = cfg?.manualVtOverride === 0 || cfg?.vtDiscountPct === 0 || emp.role === 'dono';
+              let vtDiscount = 0;
+              let vtDesc = 'Isento / Sem desconto em folha';
+              if (!isVtZeroed) {
+                if (cfg?.manualVtOverride != null && cfg.manualVtOverride > 0) {
+                  vtDiscount = Number(cfg.manualVtOverride);
+                  vtDesc = 'Valor fixo definido';
+                } else {
+                  const pct = cfg?.vtDiscountPct ?? 6;
+                  vtDiscount = Math.round(baseSalary * (pct / 100) * 100) / 100;
+                  vtDesc = `${pct}% sobre salário básico (${fmtMoney(baseSalary)})`;
+                }
+              }
+
+              // Vale Refeição / Alimentação (VR/VA): Respeita a folha real (se zerado na folha, exibe R$ 0,00)
+              const isVrVaZeroed = cfg?.manualVrVaOverride === 0 || (cfg?.vrVaDiscountPct ?? 0) === 0 || emp.role === 'dono';
+              let vrVaDiscount = 0;
+              let vrVaDesc = 'Sem desconto em folha (Isento / 100% Empresa)';
+              if (!isVrVaZeroed) {
+                if (cfg?.manualVrVaOverride != null && cfg.manualVrVaOverride > 0) {
+                  vrVaDiscount = Number(cfg.manualVrVaOverride);
+                  vrVaDesc = 'Valor fixo coparticipação';
+                } else if ((cfg?.vrVaDiscountPct ?? 0) > 0) {
+                  const pct = Number(cfg!.vrVaDiscountPct);
+                  vrVaDiscount = Math.round(baseSalary * (pct / 100) * 100) / 100;
+                  vrVaDesc = `${pct}% Coparticipação PAT sobre base`;
+                }
+              }
+
+              // Outros descontos (Planos de Saúde, Farmácia, Coparticipação)
+              const otherDiscountsAmount = Number(cfg?.otherDiscountsAmount || 0);
+              const otherDiscountsDesc = cfg?.otherDiscountsDescription || 'Planos / Odonto / Farmácia';
+
+              const totalBeneficiosDescontados = Math.round((vtDiscount + vrVaDiscount + otherDiscountsAmount) * 100) / 100;
 
               return (
-                <div key={emp.id} className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3">
+                <div key={emp.id} className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3.5 shadow-sm">
                   <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                     <div>
-                      <h4 className="text-xs font-bold text-white">{emp.name}</h4>
-                      <span className="text-[10px] text-zinc-400">{emp.positionTitle} • Salário Base: {fmtMoney(salary)}</span>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>{emp.name}</span>
+                        {emp.role === 'dono' && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-500/10 text-amber-300 font-mono">Dono</span>
+                        )}
+                      </h4>
+                      <span className="text-[10px] text-zinc-400">
+                        {emp.positionTitle} • Salário: {fmtMoney(baseSalary)} {bonusGratification > 0 ? `+ Grat: ${fmtMoney(bonusGratification)}` : ''}
+                      </span>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-emerald-400">
-                      CLT Ativo
-                    </span>
+                    <button
+                      onClick={() => handleOpenBenefitsModal(emp)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-emerald-600 text-zinc-200 hover:text-white transition-all text-[11px] font-bold flex items-center gap-1 shadow cursor-pointer"
+                      title="Configurar ou Zerar Descontos de Benefícios em Folha"
+                    >
+                      <Sliders className="w-3 h-3" />
+                      <span>Ajustar Benefícios</span>
+                    </button>
                   </div>
 
                   <div className="space-y-2 text-xs">
                     {/* VT */}
                     <div className="p-2.5 rounded-lg bg-zinc-950/60 border border-zinc-800 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-xs">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                          isVtZeroed ? 'bg-zinc-800 text-zinc-400' : 'bg-blue-500/10 text-blue-400'
+                        }`}>
                           VT
                         </div>
                         <div>
-                          <span className="font-semibold text-white block text-[11px]">Vale Transporte (Bilhete Único / Riocard)</span>
-                          <span className="text-[10px] text-zinc-500">Teto Legal: 6% do salário</span>
+                          <span className="font-semibold text-white block text-[11px]">Vale Transporte (Bilhete Único)</span>
+                          <span className="text-[10px] text-zinc-500">{vtDesc}</span>
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="font-mono font-bold text-rose-400 text-xs block">-{fmtMoney(vtMaxDiscount)}</span>
-                        <span className="text-[10px] text-zinc-500">Desconto em Folha</span>
+                        {isVtZeroed ? (
+                          <>
+                            <span className="font-mono font-bold text-emerald-400 text-xs block">R$ 0,00</span>
+                            <span className="text-[9px] text-emerald-500/80 font-sans">Isento / Dispensado</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-mono font-bold text-rose-400 text-xs block">-{fmtMoney(vtDiscount)}</span>
+                            <span className="text-[10px] text-zinc-500">Desconto em Folha</span>
+                          </>
+                        )}
                       </div>
                     </div>
 
                     {/* VR / VA */}
                     <div className="p-2.5 rounded-lg bg-zinc-950/60 border border-zinc-800 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                          isVrVaZeroed ? 'bg-zinc-800 text-zinc-400' : 'bg-emerald-500/10 text-emerald-400'
+                        }`}>
                           VR
                         </div>
                         <div>
                           <span className="font-semibold text-white block text-[11px]">Vale Refeição / Alimentação (PAT)</span>
-                          <span className="text-[10px] text-zinc-500">Carga Mensal estimada: R$ 550,00</span>
+                          <span className="text-[10px] text-zinc-500">{vrVaDesc}</span>
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="font-mono font-bold text-rose-400 text-xs block">-{fmtMoney(vrDiscount)}</span>
-                        <span className="text-[10px] text-zinc-500">5% Coparticipação</span>
+                        {isVrVaZeroed ? (
+                          <>
+                            <span className="font-mono font-bold text-emerald-400 text-xs block">R$ 0,00</span>
+                            <span className="text-[9px] text-emerald-500/80 font-sans">Isento / Zerado em Folha</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-mono font-bold text-rose-400 text-xs block">-{fmtMoney(vrVaDiscount)}</span>
+                            <span className="text-[10px] text-zinc-500">Coparticipação em Folha</span>
+                          </>
+                        )}
                       </div>
                     </div>
+
+                    {/* PLANOS DE SAÚDE & OUTROS */}
+                    <div className="p-2.5 rounded-lg bg-zinc-950/60 border border-zinc-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                          otherDiscountsAmount === 0 ? 'bg-zinc-800 text-zinc-400' : 'bg-purple-500/10 text-purple-400'
+                        }`}>
+                          +
+                        </div>
+                        <div>
+                          <span className="font-semibold text-white block text-[11px]">Planos de Saúde / Farmácia / Convênios</span>
+                          <span className="text-[10px] text-zinc-500">
+                            {otherDiscountsAmount > 0 ? otherDiscountsDesc : 'Nenhum outro desconto cadastrado'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {otherDiscountsAmount === 0 ? (
+                          <>
+                            <span className="font-mono font-bold text-zinc-400 text-xs block">R$ 0,00</span>
+                            <span className="text-[9px] text-zinc-500 font-sans">Sem Descontos</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-mono font-bold text-rose-400 text-xs block">-{fmtMoney(otherDiscountsAmount)}</span>
+                            <span className="text-[10px] text-zinc-500">Desconto em Folha</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rodapé do Card com Total */}
+                  <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                    <span className="text-zinc-400 font-medium text-[11px]">Total Descontado de Benefícios:</span>
+                    <span className={`font-mono font-bold ${totalBeneficiosDescontados === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {totalBeneficiosDescontados === 0 ? 'R$ 0,00 (Totalmente Isento)' : `-${fmtMoney(totalBeneficiosDescontados)}`}
+                    </span>
                   </div>
                 </div>
               );
@@ -1300,16 +1744,45 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                 <label className="block text-zinc-400 mb-1 font-medium">Colaborador *</label>
                 <select
                   value={vacationEmpId}
-                  onChange={(e) => setVacationEmpId(e.target.value)}
+                  onChange={(e) => handleVacationEmpChange(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-white"
                   required
                 >
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name} ({u.positionTitle} - {fmtMoney(getEmployeeSalary(u.id))})
+                      {u.name} ({u.positionTitle} - Remuneração Atual: {fmtMoney(getEmployeeSalary(u.id))})
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Remuneração de Cálculo (Salário Base + Gratificação Mensal Habitual CLT Art. 457 § 1º) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800">
+                <div>
+                  <label className="block text-zinc-300 mb-1 font-medium">Salário Base Mensal (R$) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={vacationBaseSalary}
+                    onChange={(e) => setVacationBaseSalary(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white font-mono focus:border-emerald-500"
+                  />
+                  <span className="text-[10px] text-zinc-400 mt-0.5 block">Salário fixo contratual</span>
+                </div>
+                <div>
+                  <label className="block text-zinc-300 mb-1 font-medium flex items-center justify-between">
+                    <span>Gratificação Mensal (R$)</span>
+                    <span className="text-[10px] text-emerald-400 font-semibold">CLT Art. 457 § 1º</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={vacationBonusGratification}
+                    onChange={(e) => setVacationBonusGratification(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white font-mono focus:border-emerald-500"
+                  />
+                  <span className="text-[10px] text-zinc-400 mt-0.5 block">Integra férias e 1/3 constitucional</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1388,6 +1861,62 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                   </span>
                 </label>
               </div>
+
+              {/* Demonstrativo em tempo real do cálculo de férias */}
+              {(() => {
+                const pBase = Math.max(0, parseFloat(vacationBaseSalary.replace(',', '.')) || 0);
+                const pBonus = Math.max(0, parseFloat(vacationBonusGratification.replace(',', '.')) || 0);
+                const empDet = vacationEmpId ? getEmployeeSalaryDetails(vacationEmpId) : null;
+                const insal = empDet?.insalubridadePay || 0;
+                const totRemun = Math.round((pBase + pBonus + insal) * 100) / 100;
+                const daily = totRemun / 30;
+                const actualDays = vacationSellAbono ? Math.max(1, vacationDays - vacationAbonoDays) : vacationDays;
+                const vacPay = Math.round(daily * actualDays * 100) / 100;
+                const oneThird = Math.round((vacPay / 3) * 100) / 100;
+                const abonoP = vacationSellAbono ? Math.round(daily * vacationAbonoDays * 100) / 100 : 0;
+                const abonoOneThird = vacationSellAbono ? Math.round((abonoP / 3) * 100) / 100 : 0;
+                const adv13th = vacationAdvance13th ? Math.round(totRemun * 0.5 * 100) / 100 : 0;
+                const inssV = PayrollCalculatorService.calculateCltInss(vacPay + oneThird).amount;
+                const irrfV = PayrollCalculatorService.calculateCltIrpf(
+                  vacPay + oneThird,
+                  inssV,
+                  users.find((u) => u.id === vacationEmpId)?.dependentsList?.filter((d) => d.eligibleIrpfDeduction).length || 0
+                ).amount;
+                const netEst = Math.round((vacPay + oneThird + abonoP + abonoOneThird + adv13th - (inssV + irrfV)) * 100) / 100;
+
+                return (
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-emerald-500/30 space-y-2 text-xs">
+                    <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                      <span className="font-bold text-white uppercase text-[10px] tracking-wider">
+                        Demonstrativo de Cálculo de Férias (CLT Art. 457 § 1º)
+                      </span>
+                      <span className="font-mono text-[11px] text-emerald-400 font-bold">
+                        Base Integral: {fmtMoney(totRemun)}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-zinc-300 font-mono text-[11px]">
+                      <div>Salário Base: <strong className="text-white">{fmtMoney(pBase)}</strong></div>
+                      <div>Gratificação Habitual: <strong className="text-emerald-400">{fmtMoney(pBonus)}</strong></div>
+                      <div>Gozo ({actualDays} dias): <strong className="text-white">{fmtMoney(vacPay)}</strong></div>
+                      <div>1/3 Constitucional: <strong className="text-emerald-400">+{fmtMoney(oneThird)}</strong></div>
+                      {vacationSellAbono && (
+                        <>
+                          <div>Abono Pecuniário ({vacationAbonoDays}d): <strong className="text-white">+{fmtMoney(abonoP)}</strong></div>
+                          <div>1/3 s/ Abono: <strong className="text-emerald-400">+{fmtMoney(abonoOneThird)}</strong></div>
+                        </>
+                      )}
+                      {vacationAdvance13th && (
+                        <div>Adiant. 13º (50%): <strong className="text-white">+{fmtMoney(adv13th)}</strong></div>
+                      )}
+                      <div>INSS e IRRF estimados: <strong className="text-rose-400">-{fmtMoney(inssV + irrfV)}</strong></div>
+                    </div>
+                    <div className="pt-2 border-t border-zinc-800 flex items-center justify-between font-bold">
+                      <span className="text-white">Líquido Estimado a Pagar:</span>
+                      <span className="text-emerald-400 font-mono text-sm">{fmtMoney(netEst)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="block text-zinc-400 mb-1">Observações do DP:</label>
@@ -1800,6 +2329,291 @@ export const CompleteHRSuite: React.FC<CompleteHRSuiteProps> = ({
                 Fechar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: AJUSTAR / ZERAR BENEFÍCIOS EM FOLHA (VT, VR/VA, PLANOS) */}
+      {/* ========================================================================= */}
+      {editingBenefitsEmp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-lg p-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-100 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-emerald-400" />
+                  <span>Ajustar Benefícios & Descontos em Folha</span>
+                </h3>
+                <span className="text-[11px] text-zinc-400">
+                  Colaborador: <strong className="text-white">{editingBenefitsEmp.name}</strong> ({editingBenefitsEmp.positionTitle})
+                </span>
+              </div>
+              <button
+                onClick={() => setEditingBenefitsEmp(null)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBenefits} className="space-y-4 text-xs">
+              {/* Vale Transporte (VT) */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-400" />
+                    <span>Vale Transporte (Lei 7.418/85)</span>
+                  </span>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-emerald-400 font-semibold text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={benefitVtZero}
+                      onChange={(e) => {
+                        setBenefitVtZero(e.target.checked);
+                        if (e.target.checked) setBenefitVtPct('0');
+                        else setBenefitVtPct('6');
+                      }}
+                      className="rounded bg-zinc-900 border-zinc-700 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span>Zerar / Isentar VT (R$ 0,00)</span>
+                  </label>
+                </div>
+
+                {!benefitVtZero ? (
+                  <div className="pt-2 border-t border-zinc-800/80">
+                    <label className="block text-zinc-400 mb-1">Percentual de Desconto em Folha (%):</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={benefitVtPct}
+                        onChange={(e) => setBenefitVtPct(e.target.value)}
+                        placeholder="6"
+                        className="w-28 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                      />
+                      <span className="text-[11px] text-zinc-500">% sobre o salário básico (máx legal 6%)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-emerald-400/90 bg-emerald-950/40 p-2 rounded-lg border border-emerald-500/20">
+                    ✓ Colaborador isento de desconto de VT (não será debitado nenhum valor na folha ou RH completo).
+                  </p>
+                )}
+              </div>
+
+              {/* Vale Refeição / Alimentação (VR/VA) */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>Vale Refeição / Alimentação (PAT)</span>
+                  </span>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-emerald-400 font-semibold text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={benefitVrZero}
+                      onChange={(e) => {
+                        setBenefitVrZero(e.target.checked);
+                        if (e.target.checked) setBenefitVrPct('0');
+                        else setBenefitVrPct('5');
+                      }}
+                      className="rounded bg-zinc-900 border-zinc-700 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span>Zerar / Isentar VR/VA (R$ 0,00)</span>
+                  </label>
+                </div>
+
+                {!benefitVrZero ? (
+                  <div className="pt-2 border-t border-zinc-800/80">
+                    <label className="block text-zinc-400 mb-1">Percentual de Coparticipação PAT (%):</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={benefitVrPct}
+                        onChange={(e) => setBenefitVrPct(e.target.value)}
+                        placeholder="0"
+                        className="w-28 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                      />
+                      <span className="text-[11px] text-zinc-500">% coparticipação sobre base (0% a 20%)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-emerald-400/90 bg-emerald-950/40 p-2 rounded-lg border border-emerald-500/20">
+                    ✓ VR/VA zerado em folha (100% custeado pela empresa ou dispensado, sem descontos).
+                  </p>
+                )}
+              </div>
+
+              {/* Planos de Saúde / Outros Descontos */}
+              <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+                <span className="font-bold text-white flex items-center gap-1.5 block">
+                  <span className="w-2 h-2 rounded-full bg-purple-400" />
+                  <span>Planos de Saúde, Odontológico & Outros Convênios</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 mb-1">Valor do Desconto (R$):</label>
+                    <input
+                      type="text"
+                      value={benefitOtherAmount}
+                      onChange={(e) => setBenefitOtherAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1">Descrição / Motivo:</label>
+                    <input
+                      type="text"
+                      value={benefitOtherDesc}
+                      onChange={(e) => setBenefitOtherDesc(e.target.value)}
+                      placeholder="Ex: Coparticipação Unimed"
+                      className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Botão Rápido de Zerar Tudo */}
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-950 border border-zinc-800">
+                <span className="text-[11px] text-zinc-400">Atalho rápido:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBenefitVtZero(true);
+                    setBenefitVtPct('0');
+                    setBenefitVrZero(true);
+                    setBenefitVrPct('0');
+                    setBenefitOtherAmount('0');
+                    setBenefitOtherDesc('');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 text-[10px] font-bold cursor-pointer transition-colors"
+                >
+                  ⚡ Zerar Todos os Descontos Deste Colaborador
+                </button>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingBenefitsEmp(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                >
+                  Salvar Benefícios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: AJUSTAR REMUNERAÇÃO DE 13º (SALÁRIO BASE + GRATIFICAÇÃO MENSAL) */}
+      {/* ========================================================================= */}
+      {editing13thEmp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-lg p-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-100 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-emerald-400" />
+                  <span>Ajustar Remuneração para Cálculo do 13º Salário</span>
+                </h3>
+                <span className="text-[11px] text-zinc-400">
+                  Colaborador: <strong className="text-white">{editing13thEmp.name}</strong> ({editing13thEmp.positionTitle})
+                </span>
+              </div>
+              <button
+                onClick={() => setEditing13thEmp(null)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave13thSalary} className="space-y-4 text-xs">
+              <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+                <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block">
+                  Remuneração de Cálculo (CLT Art. 457 § 1º & Lei 4.090/62)
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-300 mb-1 font-medium">Salário Base Mensal (R$) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={edit13thBaseSalary}
+                      onChange={(e) => setEdit13thBaseSalary(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white font-mono focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-zinc-400 mt-0.5 block">Salário fixo contratual</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-300 mb-1 font-medium flex items-center justify-between">
+                      <span>Gratificação Habitual (R$)</span>
+                      <span className="text-[10px] text-emerald-400 font-semibold">Art. 457 § 1º</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={edit13thBonusGratification}
+                      onChange={(e) => setEdit13thBonusGratification(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white font-mono focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-zinc-400 mt-0.5 block">Integra o 13º integralmente</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Demonstrativo em tempo real */}
+              {(() => {
+                const bSal = Math.max(0, parseFloat(edit13thBaseSalary.replace(',', '.')) || 0);
+                const bBonus = Math.max(0, parseFloat(edit13thBonusGratification.replace(',', '.')) || 0);
+                const bTotal = bSal + bBonus;
+                const first50 = Math.round(bTotal * 0.5 * 100) / 100;
+
+                return (
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-emerald-500/30 space-y-2 text-xs">
+                    <span className="font-bold text-white uppercase text-[10px] tracking-wider block">
+                      Demonstrativo de Impacto no 13º Salário
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 text-zinc-300 font-mono text-[11px]">
+                      <div>Salário Base: <strong className="text-white">{fmtMoney(bSal)}</strong></div>
+                      <div>Gratificação Mensal: <strong className="text-emerald-400">+{fmtMoney(bBonus)}</strong></div>
+                      <div>Remuneração Integral: <strong className="text-emerald-400 text-xs">{fmtMoney(bTotal)}</strong></div>
+                      <div>1ª Parcela (50% Bruto): <strong className="text-white">{fmtMoney(first50)}</strong></div>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 pt-1 border-t border-zinc-800">
+                      Ao salvar, o salário base e a gratificação serão atualizados na Folha de Pagamento e em todo o RH Completo.
+                    </p>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setEditing13thEmp(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                >
+                  Salvar Remuneração de 13º
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

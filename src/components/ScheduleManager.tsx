@@ -21,7 +21,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { UserAccount, ScheduleDay, Store, ScheduleType } from '../types';
-import { StorageService } from '../services/storage';
+import { StorageService, calculateScheduledLunchStart } from '../services/storage';
 
 interface ScheduleManagerProps {
   users: UserAccount[];
@@ -83,6 +83,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   );
   const [shiftEndInput, setShiftEndInput] = useState<string>(
     selectedEmployee?.defaultShiftEnd || '16:20'
+  );
+  const [lunchStartInput, setLunchStartInput] = useState<string>(
+    selectedEmployee?.defaultLunchStart || calculateScheduledLunchStart(selectedEmployee?.defaultShiftStart || '08:00', selectedEmployee?.defaultShiftEnd || '16:20')
   );
 
   // For 6x1: single primary day off (0 = Domingo)
@@ -166,7 +169,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         shiftStartInput,
         shiftEndInput,
         daysOffToUse,
-        cycle12x36StartsWorking
+        cycle12x36StartsWorking,
+        lunchStartInput
       );
 
       // Update employee default settings
@@ -174,7 +178,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         ...targetEmp,
         scheduleType: scaleChoice,
         defaultShiftStart: shiftStartInput,
-        defaultShiftEnd: shiftEndInput
+        defaultShiftEnd: shiftEndInput,
+        defaultLunchStart: lunchStartInput
       });
     });
 
@@ -242,6 +247,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       ...targetSchA,
       shiftStart: targetSchB.shiftStart,
       shiftEnd: targetSchB.shiftEnd,
+      lunchStart: targetSchB.lunchStart,
       isOffDay: targetSchB.isOffDay,
       notes: `Troca de turno autorizada com ${empB.name}`
     };
@@ -249,6 +255,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       ...targetSchB,
       shiftStart: targetSchA.shiftStart,
       shiftEnd: targetSchA.shiftEnd,
+      lunchStart: targetSchA.lunchStart,
       isOffDay: targetSchA.isOffDay,
       notes: `Troca de turno autorizada com ${empA.name}`
     };
@@ -358,7 +365,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         </div>
 
         {/* Row 1: Employee, Scale Model, Shift Times */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
           {/* Employee select */}
           <div>
             <label className="block text-zinc-400 mb-1 font-medium">Colaborador(a)</label>
@@ -371,6 +378,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   setScaleChoice(emp.scheduleType);
                   setShiftStartInput(emp.defaultShiftStart || '08:00');
                   setShiftEndInput(emp.defaultShiftEnd || '16:20');
+                  setLunchStartInput(emp.defaultLunchStart || calculateScheduledLunchStart(emp.defaultShiftStart || '08:00', emp.defaultShiftEnd || '16:20'));
                   if (emp.scheduleType === '5x2') {
                     setSelectedDaysOff5x2([0, 6]);
                   }
@@ -400,13 +408,16 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 if (val === '12x36') {
                   setShiftStartInput('10:00');
                   setShiftEndInput('22:00');
+                  setLunchStartInput('14:00');
                 } else if (val === '6x1') {
                   setShiftStartInput('08:00');
                   setShiftEndInput('16:20');
+                  setLunchStartInput('12:00');
                   setWeeklyDayOff(0);
                 } else if (val === '5x2') {
                   setShiftStartInput('08:00');
                   setShiftEndInput('17:48');
+                  setLunchStartInput('12:00');
                   setSelectedDaysOff5x2([0, 6]);
                 }
               }}
@@ -424,7 +435,25 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             <input
               type="time"
               value={shiftStartInput}
-              onChange={(e) => setShiftStartInput(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setShiftStartInput(val);
+                setLunchStartInput(calculateScheduledLunchStart(val, shiftEndInput));
+              }}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          {/* Shift Lunch */}
+          <div>
+            <label className="block text-zinc-400 mb-1 font-medium">
+              Almoço Previsto
+              <span className="text-[10px] text-amber-400 ml-1">(Trava 5m)</span>
+            </label>
+            <input
+              type="time"
+              value={lunchStartInput}
+              onChange={(e) => setLunchStartInput(e.target.value)}
               className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
             />
           </div>
@@ -829,18 +858,37 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
               </div>
 
               {!editingDay.isOffDay && (
-                <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-3 gap-3 pt-1">
                   <div>
-                    <label className="block text-zinc-400 mb-1">Início do Turno</label>
+                    <label className="block text-zinc-400 mb-1">Início Turno</label>
                     <input
                       type="time"
                       value={editingDay.shiftStart}
-                      onChange={(e) => setEditingDay({ ...editingDay, shiftStart: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditingDay({
+                          ...editingDay,
+                          shiftStart: val,
+                          lunchStart: calculateScheduledLunchStart(val, editingDay.shiftEnd, editingDay.lunchStart)
+                        });
+                      }}
                       className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
                     />
                   </div>
                   <div>
-                    <label className="block text-zinc-400 mb-1">Término do Turno</label>
+                    <label className="block text-zinc-400 mb-1">
+                      Almoço Previsto
+                      <span className="text-[10px] text-amber-400 ml-1">(5m)</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={editingDay.lunchStart || calculateScheduledLunchStart(editingDay.shiftStart, editingDay.shiftEnd)}
+                      onChange={(e) => setEditingDay({ ...editingDay, lunchStart: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-1">Término Turno</label>
                     <input
                       type="time"
                       value={editingDay.shiftEnd}

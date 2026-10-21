@@ -64,6 +64,7 @@ export interface UserAccount {
   scheduleType: ScheduleType;
   defaultShiftStart: string; // "08:00" or "14:00" or "10:00"
   defaultShiftEnd: string;   // "16:20" or "22:20" or "22:00"
+  defaultLunchStart?: string; // "12:00" ou horário previsto para saída para refeição
   lunchDurationMin: number;  // typically 60 min
   active: boolean;
   mfaEnabled: boolean;
@@ -123,6 +124,7 @@ export interface ScheduleDay {
   date: string; // YYYY-MM-DD
   shiftStart: string;
   shiftEnd: string;
+  lunchStart?: string; // HH:mm horário previsto de almoço
   isOffDay: boolean; // Folga
   isExtraDay: boolean; // Dia Extra
   scheduleType: ScheduleType;
@@ -224,6 +226,8 @@ export interface PayrollEmployeeConfig {
   manualIrpfOverride?: number | null; // R$ direto se desejar fixar
   manualVtOverride?: number | null; // R$ direto se desejar fixar
   manualVrVaOverride?: number | null; // R$ direto se desejar fixar
+  manualDelaysMinutesOverride?: number | null; // Minutos manuais de atraso
+  manualDelaysDiscountOverride?: number | null; // R$ direto de desconto de atrasos
 
   // Adicionais e Descontos automáticos apurados do ponto
   includePunchesExtras?: boolean; // Incorporar horas extras apuradas do ponto
@@ -281,6 +285,7 @@ export interface PayrollCalculationResult {
   dsrLossDiscount: number; // Perda do DSR decorrente de falta/atraso
   unjustifiedAbsencesDiscount: number; // Faltas integrais injustificadas
   otherDiscounts: number;
+  otherDiscountsDescription?: string;
   totalDiscounts: number;
 
   // Resultado & Bases de Cálculo Oficiais
@@ -389,6 +394,8 @@ export interface VacationRecord {
   advanceFirstThirteenth: boolean; // Adiantamento da 1ª parcela do 13º
   // Valores calculados
   baseSalary: number;
+  bonusGratification?: number; // Gratificação de função ou mensal habitual (CLT Art. 457 § 1º)
+  totalRemuneration?: number;  // Remuneração integral de cálculo (base + gratificação)
   vacationPay: number;      // Salário dos dias de férias
   oneThirdBonus: number;    // 1/3 Constitucional (Art. 7º, XVII CF/88)
   abonoPay: number;         // Valor do abono pecuniário
@@ -413,6 +420,8 @@ export interface ThirteenthSalaryRecord {
   year: number;
   monthsWorked: number;     // Avos de direito (fração >= 15 dias trabalhados no mês)
   baseSalary: number;
+  bonusGratification?: number; // Gratificação mensal que integra o cálculo (CLT Art. 457 § 1º)
+  totalRemuneration?: number;  // Remuneração integral de cálculo
   firstInstallmentGross: number; // 50% sem descontos (pago até 30/nov)
   secondInstallmentGross: number; // Valor integral - 1ª parcela
   inssSecondInstallment: number;

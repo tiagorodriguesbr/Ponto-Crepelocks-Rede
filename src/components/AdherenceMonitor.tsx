@@ -247,6 +247,7 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
                 <th className="py-3 px-3">Escala</th>
                 <th className="py-3 px-3">Horário Previsto</th>
                 <th className="py-3 px-3">Entrada Real</th>
+                <th className="py-3 px-3">Intervalo Almoço</th>
                 <th className="py-3 px-3">Saída Real</th>
                 <th className="py-3 px-3">Atraso</th>
                 <th className="py-3 px-3">Pontualidade</th>
@@ -257,7 +258,7 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
             <tbody className="divide-y divide-zinc-800/60 font-mono">
               {filteredPunches.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-zinc-500 font-sans">
+                  <td colSpan={10} className="py-8 text-center text-zinc-500 font-sans">
                     Nenhum registro encontrado para os filtros selecionados.
                   </td>
                 </tr>
@@ -285,6 +286,27 @@ export const AdherenceMonitor: React.FC<AdherenceMonitorProps> = ({
                       <td className="py-2.5 px-3">
                         {punch.entry ? (
                           <span className="text-emerald-400 font-bold">{punch.entry.slice(0, 5)}</span>
+                        ) : (
+                          <span className="text-zinc-500">--:--</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {punch.lunchStart ? (
+                          <div className="flex flex-col">
+                            <span className="text-amber-300 font-bold text-xs">
+                              {punch.lunchStart.slice(0, 5)} {punch.lunchEnd ? `→ ${punch.lunchEnd.slice(0, 5)}` : '(Em pausa)'}
+                            </span>
+                            {punch.lunchStart && punch.lunchEnd && (
+                              <span className="text-[10px] text-zinc-400 font-normal">
+                                {(() => {
+                                  const [sh, sm] = punch.lunchStart.split(':').map(Number);
+                                  const [eh, em] = punch.lunchEnd.split(':').map(Number);
+                                  const diff = (eh * 60 + em) - (sh * 60 + sm);
+                                  return `${diff > 0 ? diff : diff + 1440} min`;
+                                })()}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-zinc-500">--:--</span>
                         )}

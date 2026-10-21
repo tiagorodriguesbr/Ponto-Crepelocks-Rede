@@ -410,6 +410,7 @@ export const PayrollCalculatorService = {
   calculateSeverance(params: {
     employee: UserAccount;
     baseSalary: number;
+    bonusGratification?: number;
     admissionDate: string;
     dismissalDate: string;
     reason: SeveranceReason;
@@ -424,6 +425,7 @@ export const PayrollCalculatorService = {
     const {
       employee,
       baseSalary,
+      bonusGratification = 0,
       admissionDate,
       dismissalDate,
       reason,
@@ -435,6 +437,9 @@ export const PayrollCalculatorService = {
       storeName = 'Unidade da Empresa',
       payrollStoreId
     } = params;
+
+    // Remuneração Total para Fins Rescisórios (CLT Art. 457 § 1º)
+    const totalRemuneration = Math.round((baseSalary + bonusGratification) * 100) / 100;
 
     // Cálculo de Dias Trabalhados
     const dAdmission = new Date(admissionDate);
@@ -450,7 +455,7 @@ export const PayrollCalculatorService = {
     // Saldo de Salário (dias trabalhados no mês do desligamento)
     const dismissalDayOfMonth = Math.min(30, parseInt(dismissalDate.split('-')[2], 10) || 1);
     const saldoSalarioDias = dismissalDayOfMonth;
-    const saldoSalarioValor = Math.round((baseSalary / 30) * saldoSalarioDias * 100) / 100;
+    const saldoSalarioValor = Math.round((totalRemuneration / 30) * saldoSalarioDias * 100) / 100;
 
     // Frações de 13º e Férias Proporcionais
     // Fração de 15 dias no mês dá direito a 1/12 avo
@@ -474,11 +479,11 @@ export const PayrollCalculatorService = {
 
     const decimoTerceiroValor = reason === 'com_justa_causa'
       ? 0
-      : Math.round((baseSalary / 12) * decimoTerceiroProporcionalMeses * 100) / 100;
+      : Math.round((totalRemuneration / 12) * decimoTerceiroProporcionalMeses * 100) / 100;
 
     const feriasProporcionaisValor = reason === 'com_justa_causa'
       ? 0
-      : Math.round((baseSalary / 12) * feriasProporcionaisMeses * 100) / 100;
+      : Math.round((totalRemuneration / 12) * feriasProporcionaisMeses * 100) / 100;
 
     const tercoConstitucionalFerias = reason === 'com_justa_causa'
       ? 0
@@ -491,13 +496,13 @@ export const PayrollCalculatorService = {
     if (contractType === 'experiencia' && reason === 'rescisao_antecipada_empregador') {
       artigo479IndenizacaoDias = daysRemainingInProbation;
       // 50% dos salários que faltariam para o contrato acabar
-      artigo479IndenizacaoValor = Math.round(0.5 * (baseSalary / 30) * daysRemainingInProbation * 100) / 100;
+      artigo479IndenizacaoValor = Math.round(0.5 * (totalRemuneration / 30) * daysRemainingInProbation * 100) / 100;
     }
 
     // Aviso Prévio Indenizado (Contrato indeterminado sem justa causa)
     let avisoPrevioIndenizadoValor = 0;
     if (contractType === 'indeterminado' && reason === 'sem_justa_causa') {
-      avisoPrevioIndenizadoValor = Math.round(baseSalary * 100) / 100;
+      avisoPrevioIndenizadoValor = Math.round(totalRemuneration * 100) / 100;
     }
 
     // Multa FGTS 40% informativa e saque
@@ -506,7 +511,7 @@ export const PayrollCalculatorService = {
 
     if (reason === 'sem_justa_causa' || reason === 'rescisao_antecipada_empregador') {
       saqueFgtsLiberado = true;
-      const fgtsAcumulado = (baseSalary * 0.08) * (daysWorkedTotal / 30);
+      const fgtsAcumulado = (totalRemuneration * 0.08) * (daysWorkedTotal / 30);
       multaFgts40PctValor = Math.round(fgtsAcumulado * 0.40 * 100) / 100;
     } else if (reason === 'termino_experiencia') {
       // No término do contrato de experiência não há multa de 40%, mas o saque é liberado

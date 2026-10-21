@@ -2427,7 +2427,7 @@ export const PayrollManager: React.FC<PayrollManagerProps> = ({
                         type="button"
                         onClick={() => {
                           const s = stores.find((st) => st.id === viewingHolerite.payrollStoreId) || stores.find((st) => st.id === emp?.storeId) || stores[0];
-                          if (s) openHeaderModalForStore(s);
+                          if (s) openHeaderModalForStore(s.id);
                         }}
                         className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-[10px] font-bold border border-zinc-700 flex items-center gap-1.5 transition-all cursor-pointer"
                         title="Personalizar Razão Social, CNPJ, Título e Endereço que saem no cabeçalho desta unidade"

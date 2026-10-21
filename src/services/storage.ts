@@ -418,10 +418,6 @@ export const StorageService = {
       notes: notes || undefined
     };
 
-    if (!existing) {
-      punches.push(record);
-    }
-
     let statusMsg = '';
 
     if (punchType === 'entry') {
@@ -437,7 +433,7 @@ export const StorageService = {
       const diff = actualStartMins - schedStartMins;
 
       // Limitador de entrada: só pode bater com no máximo 5 minutos de antecedência (a partir de schedStartMins - 5)
-      // Cargo de confiança ou Dono é isento. Almoço e saída não têm restrição.
+      // Cargo de confiança ou Dono é isento.
       if (!customTime && !employee.exemptFromPunchClock && actualStartMins < schedStartMins - 5) {
         const allowedMin = Math.max(0, schedStartMins - 5);
         const allowedH = Math.floor(allowedMin / 60).toString().padStart(2, '0');
@@ -488,6 +484,22 @@ export const StorageService = {
           message: 'Registre primeiro a entrada para habilitar a saída para o almoço.'
         };
       }
+
+      // Limitador de saída para o almoço: trava de 5 minutos antes do horário agendado de almoço
+      const effectiveLunchStart = todaySchedule?.lunchStart || employee.defaultLunchStart || calculateScheduledLunchStart(effectiveShiftStart, effectiveShiftEnd);
+      const schedLunchMins = timeToMinutes(effectiveLunchStart);
+      const actualLunchMins = timeToMinutes(timeStr.slice(0, 5));
+
+      if (!customTime && !employee.exemptFromPunchClock && actualLunchMins < schedLunchMins - 5) {
+        const allowedMin = Math.max(0, schedLunchMins - 5);
+        const allowedH = Math.floor(allowedMin / 60).toString().padStart(2, '0');
+        const allowedM = (allowedMin % 60).toString().padStart(2, '0');
+        return {
+          punch: record,
+          message: `Horário bloqueado: Saída para almoço agendada para ${effectiveLunchStart}. O registro só é liberado a partir das ${allowedH}:${allowedM} (5 min de antecedência).`
+        };
+      }
+
       record.lunchStart = timeStr;
       statusMsg = 'Saída para refeição/almoço registrada!';
       record.statusLabel = 'Em Horário de Refeição';
@@ -509,6 +521,20 @@ export const StorageService = {
       const lunchDurationMin = employee.lunchDurationMin || 60;
       const allowedReturnMins = lunchStartMins + lunchDurationMin;
       const actualReturnMins = timeToMinutes(timeStr.slice(0, 5));
+
+      // Trava de segurança: impede retorno instantâneo fraudulento ou clique duplo (mínimo de 15 minutos ou intervalo legal)
+      const minIntervalMins = Math.min(30, Math.max(15, lunchDurationMin - 15));
+      const earliestReturnMins = lunchStartMins + minIntervalMins;
+
+      if (!customTime && !employee.exemptFromPunchClock && actualReturnMins < earliestReturnMins) {
+        const allowedH = Math.floor(earliestReturnMins / 60).toString().padStart(2, '0');
+        const allowedM = (earliestReturnMins % 60).toString().padStart(2, '0');
+        return {
+          punch: record,
+          message: `Horário bloqueado: Intervalo de refeição em andamento. Conforme Art. 71 da CLT, o retorno só é liberado a partir das ${allowedH}:${allowedM}.`
+        };
+      }
+
       const lateLunchReturnMin = Math.max(0, actualReturnMins - allowedReturnMins);
 
       record.lunchEnd = timeStr;
@@ -552,6 +578,10 @@ export const StorageService = {
 
       record.exit = timeStr;
       statusMsg = 'Fim de jornada registrado com sucesso! Bom descanso.';
+    }
+
+    if (!existing) {
+      punches.push(record);
     }
 
     recomputePunchMetrics(record);
@@ -604,11 +634,13 @@ export const StorageService = {
     shiftStart: string,
     shiftEnd: string,
     weeklyDayOffIndices: number[] = [0],
-    alternationStartWorking: boolean = true
+    alternationStartWorking: boolean = true,
+    lunchStart?: string
   ): ScheduleDay[] {
     const daysInMonth = new Date(year, month, 0).getDate();
     const generated: ScheduleDay[] = [];
     const monthStr = month < 10 ? `0${month}` : `${month}`;
+    const effectiveLunch = lunchStart || calculateScheduledLunchStart(shiftStart, shiftEnd);
 
     if (scheduleType === '6x1') {
       const offDays = weeklyDayOffIndices.length > 0 ? weeklyDayOffIndices : [0];
@@ -624,6 +656,7 @@ export const StorageService = {
           date: dateStr,
           shiftStart,
           shiftEnd,
+          lunchStart: isOff ? undefined : effectiveLunch,
           isOffDay: isOff,
           isExtraDay: false,
           scheduleType: '6x1',
@@ -640,6 +673,7 @@ export const StorageService = {
           date: dateStr,
           shiftStart,
           shiftEnd,
+          lunchStart: !isWorking ? undefined : effectiveLunch,
           isOffDay: !isWorking,
           isExtraDay: false,
           scheduleType: '12x36',
@@ -662,6 +696,7 @@ export const StorageService = {
           date: dateStr,
           shiftStart,
           shiftEnd,
+          lunchStart: isOff ? undefined : effectiveLunch,
           isOffDay: isOff,
           isExtraDay: false,
           scheduleType: '5x2',
@@ -1298,10 +1333,26 @@ export const StorageService = {
   }
 };
 
-function timeToMinutes(t: string | null): number {
+export function timeToMinutes(t: string | null): number {
   if (!t) return 0;
   const parts = t.split(':');
   return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+export function calculateScheduledLunchStart(
+  shiftStart: string,
+  shiftEnd?: string,
+  explicitLunchStart?: string
+): string {
+  if (explicitLunchStart && explicitLunchStart.trim()) {
+    return explicitLunchStart.trim();
+  }
+  const startMins = timeToMinutes(shiftStart);
+  // Padrão CLT: intervalo de refeição ~4 horas após o início da jornada
+  const lunchMins = (startMins + 240) % (24 * 60);
+  const h = Math.floor(lunchMins / 60).toString().padStart(2, '0');
+  const m = (lunchMins % 60).toString().padStart(2, '0');
+  return `${h}:${m}`;
 }
 
 function calculateExpectedMinutes(start: string, end: string, lunchMin: number): number {
